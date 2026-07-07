@@ -17,7 +17,7 @@ function payload(over: Partial<StorageTokenPayload> = {}): StorageTokenPayload {
     sub: "inst-consumer",
     pfx: "ws1/",
     cap: ["r", "w", "d", "l"],
-    aud: "takos.storage.workspace",
+    aud: "takos.storage.object",
     iat: now,
     exp: now + 3600,
     ...over,
@@ -60,6 +60,33 @@ describe("storage token mint/verify", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toBe("format");
   });
+
+  test("rejects a token with an empty prefix (whole-bucket guard)", async () => {
+    const token = await mintStorageToken(SECRET, payload({ pfx: "" }));
+    const result = await verifyStorageToken(SECRET, token, 1_000_100);
+    expect(result.ok).toBe(false);
+  });
+
+  // Frozen cross-repo vector: this exact token was minted by the Takosumi issuer
+  // (takosumi/core/shared/storage_access_tokens.ts). It must verify here, byte
+  // for byte — if either implementation's wire format drifts, this fails.
+  test("verifies a golden token minted by the Takosumi issuer", async () => {
+    const GOLDEN =
+      "takstor_eyJ2IjoxLCJ3cyI6InNwYWNlX2dvMWRnbzFkZ28xZGdvMWQiLCJzdWIiOiJpbnN0X2dvMWRnbzFkZ28xZGdvMWQiLCJwZngiOiJzcGFjZV9nbzFkZ28xZGdvMWRnbzFkL2luc3RfZ28xZGdvMWRnbzFkZ28xZC8iLCJjYXAiOlsiciIsInciLCJsIl0sImF1ZCI6InRha29zLnN0b3JhZ2Uub2JqZWN0IiwiaWF0IjoxMDAwMDAwMDAwLCJleHAiOjEwMDAwMDA5MDB9.dquD2sbJ1zPXqAp0FMCuUs8Mg_rV6BnKNr2mUvWaQhc";
+    const result = await verifyStorageToken(
+      "golden-key-fixed-0123456789abcdef",
+      GOLDEN,
+      1_000_000_500,
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.payload.aud).toBe("takos.storage.object");
+      expect(result.payload.pfx).toBe(
+        "space_go1dgo1dgo1dgo1d/inst_go1dgo1dgo1dgo1d/",
+      );
+      expect(result.payload.cap).toEqual(["r", "w", "l"]);
+    }
+  });
 });
 
 describe("tokenAllows", () => {
@@ -75,8 +102,8 @@ describe("tokenAllows", () => {
     expect(tokenAllows(p, "r", "ws1/other/doc.md")).toBe(false);
   });
 
-  test("empty prefix means whole bucket", () => {
+  test("empty prefix denies everything (whole-bucket guard)", () => {
     const p = payload({ pfx: "" });
-    expect(tokenAllows(p, "r", "anything/at/all")).toBe(true);
+    expect(tokenAllows(p, "r", "anything/at/all")).toBe(false);
   });
 });

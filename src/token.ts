@@ -39,7 +39,7 @@ export type StorageTokenVerifyResult =
   | { ok: false; reason: "format" | "signature" | "payload" | "version" | "expired" };
 
 const TOKEN_PREFIX = "takstor_";
-const AUDIENCE = "takos.storage.workspace";
+const AUDIENCE = "takos.storage.object";
 
 export { AUDIENCE as STORAGE_TOKEN_AUDIENCE, TOKEN_PREFIX as STORAGE_TOKEN_PREFIX };
 
@@ -117,6 +117,12 @@ export async function verifyStorageToken(
   if (payload.v !== 1 || payload.aud !== AUDIENCE || !Array.isArray(payload.cap)) {
     return { ok: false, reason: "version" };
   }
+  // Storage tokens are ALWAYS prefix-scoped; an empty/missing prefix would
+  // otherwise authorize the whole bucket. Reject it here so a malformed mint
+  // can never produce a whole-bucket token.
+  if (typeof payload.pfx !== "string" || payload.pfx.length === 0) {
+    return { ok: false, reason: "version" };
+  }
   if (typeof payload.exp !== "number" || payload.exp <= nowSeconds) {
     return { ok: false, reason: "expired" };
   }
@@ -130,6 +136,7 @@ export function tokenAllows(
   key: string,
 ): boolean {
   if (!payload.cap.includes(verb)) return false;
-  if (payload.pfx && !key.startsWith(payload.pfx)) return false;
+  // Deny when the prefix is empty (defense-in-depth: verify already rejects it).
+  if (!payload.pfx || !key.startsWith(payload.pfx)) return false;
   return true;
 }

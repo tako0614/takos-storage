@@ -1,6 +1,6 @@
 // src/token.ts
 var TOKEN_PREFIX = "takstor_";
-var AUDIENCE = "takos.storage.workspace";
+var AUDIENCE = "takos.storage.object";
 function b64urlDecode(value) {
   let normalized = value.replace(/-/g, "+").replace(/_/g, "/");
   while (normalized.length % 4 !== 0)
@@ -41,6 +41,9 @@ async function verifyStorageToken(signingKey, token, nowSeconds) {
   if (payload.v !== 1 || payload.aud !== AUDIENCE || !Array.isArray(payload.cap)) {
     return { ok: false, reason: "version" };
   }
+  if (typeof payload.pfx !== "string" || payload.pfx.length === 0) {
+    return { ok: false, reason: "version" };
+  }
   if (typeof payload.exp !== "number" || payload.exp <= nowSeconds) {
     return { ok: false, reason: "expired" };
   }
@@ -49,7 +52,7 @@ async function verifyStorageToken(signingKey, token, nowSeconds) {
 function tokenAllows(payload, verb, key) {
   if (!payload.cap.includes(verb))
     return false;
-  if (payload.pfx && !key.startsWith(payload.pfx))
+  if (!payload.pfx || !key.startsWith(payload.pfx))
     return false;
   return true;
 }
@@ -112,7 +115,12 @@ var worker_default = {
         truncated: listing.truncated
       });
     }
-    const key = decodeURIComponent(url.pathname.slice(OBJECT_PREFIX.length));
+    let key;
+    try {
+      key = decodeURIComponent(url.pathname.slice(OBJECT_PREFIX.length));
+    } catch {
+      return json({ error: "invalid_key" }, 400);
+    }
     if (!key)
       return json({ error: "empty_key" }, 400);
     const verb = VERB_BY_METHOD[request.method];
