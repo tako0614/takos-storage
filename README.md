@@ -11,7 +11,7 @@ through Takosumi like any other Capsule and surfaced in the Takos launcher.
 - Every request is gated by a **scoped bearer token** that Takosumi mints at
   bind time. A token is bounded to a key prefix (`pfx`) and a verb set
   (read / write / delete / list), so a consumer app can only touch its slice.
-- The service publishes the `takos.storage.workspace` service export; consumers
+- The service publishes the `takos.storage.object` service export; consumers
   declare a matching `consume` block and receive `TAKOS_STORAGE_API_URL` +
   `TAKOS_STORAGE_ACCESS_TOKEN` injected into their env.
 
