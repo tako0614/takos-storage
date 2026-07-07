@@ -70,7 +70,7 @@ async function token(over: Partial<StorageTokenPayload> = {}): Promise<string> {
     sub: "inst-office",
     pfx: "ws1/office/",
     cap: ["r", "w", "d", "l"],
-    aud: "takos.storage.workspace",
+    aud: "takos.storage.object",
     iat: now,
     exp: now + 3600,
     ...over,

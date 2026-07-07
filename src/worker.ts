@@ -86,7 +86,12 @@ export default {
     }
 
     // --- object ops ---
-    const key = decodeURIComponent(url.pathname.slice(OBJECT_PREFIX.length));
+    let key: string;
+    try {
+      key = decodeURIComponent(url.pathname.slice(OBJECT_PREFIX.length));
+    } catch {
+      return json({ error: "invalid_key" }, 400);
+    }
     if (!key) return json({ error: "empty_key" }, 400);
 
     const verb = VERB_BY_METHOD[request.method];

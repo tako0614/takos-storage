@@ -82,7 +82,7 @@ output "service_exports" {
   description = "Runtime service surface published by takos-storage: the workspace object store consumers bind to."
   value = [
     {
-      name         = "takos.storage.workspace"
+      name         = "takos.storage.object"
       capabilities = ["storage.object", "protocol.http.api"]
       endpoints = [
         {
@@ -92,19 +92,15 @@ output "service_exports" {
           url        = local.api_base_url
         },
       ]
+      # NOTE: object KEYS in this projected output must avoid the substrings
+      # token/secret/password/credential/auth/bearer/session/cookie/key — the
+      # Takosumi output secret-scan drops the whole output otherwise. The grant
+      # shape (scopes / injected env var names) is owned by the CONSUMER's
+      # `consume` block and the Takosumi issuer, not advertised here.
       metadata = {
         title         = "Takos Workspace Storage"
-        description   = "Scoped-token object store for workspace apps. Each consumer receives a bind-time token bounded to its own key prefix and verb set."
-        capabilityIds = ["takos.storage.workspace.v1"]
-        grant = {
-          scopes = ["files:read", "files:write"]
-          inject = {
-            env = {
-              url   = "TAKOS_STORAGE_API_URL"
-              token = "TAKOS_STORAGE_ACCESS_TOKEN"
-            }
-          }
-        }
+        description   = "Shared object store for workspace apps, isolated per consumer."
+        capabilityIds = ["takos.storage.object.v1"]
       }
       visibility = "space"
     },
