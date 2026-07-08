@@ -86,6 +86,7 @@ output "app_deployment" {
         display = {
           title       = "Takos Storage"
           description = "Scoped object storage for workspace apps."
+          icon        = "/icons/takos-storage.svg"
           category    = "storage"
         }
         spec = {
@@ -140,6 +141,7 @@ output "service_exports" {
       metadata = {
         title       = "Takos Storage"
         description = "Open the object storage console for this Capsule."
+        icon        = "/icons/takos-storage.svg"
         category    = "storage"
       }
       visibility = "space"
