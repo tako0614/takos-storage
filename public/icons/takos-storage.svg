@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">Takos Storage</title>
+  <desc id="desc">A simple object storage service icon.</desc>
+  <rect width="128" height="128" rx="28" fill="#f6f7fb"/>
+  <path d="M32 42c0-8 14-14 32-14s32 6 32 14v44c0 8-14 14-32 14s-32-6-32-14V42Z" fill="#1d4ed8"/>
+  <path d="M96 42c0 8-14 14-32 14s-32-6-32-14 14-14 32-14 32 6 32 14Z" fill="#60a5fa"/>
+  <path d="M96 64c0 8-14 14-32 14s-32-6-32-14" fill="none" stroke="#bfdbfe" stroke-width="8" stroke-linecap="round"/>
+  <path d="M96 84c0 8-14 14-32 14s-32-6-32-14" fill="none" stroke="#bfdbfe" stroke-width="8" stroke-linecap="round"/>
+</svg>
