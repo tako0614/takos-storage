@@ -6,8 +6,8 @@ worker and **not** the closed `takosumi-cloud` S3-compat extension.
 
 ## Boundaries
 
-- OSS installable Capsule (CURATED_GIT_CATALOG / yurucommu lane). Plain
-  OpenTofu module + prebuilt Worker; no Takosumi-specific manifest.
+- OSS installable Capsule listed by the Takosumi Store as discovery metadata
+  only. Plain OpenTofu module + prebuilt Worker; no Takosumi-specific manifest.
 - Access is via **bind-time scoped tokens** minted by Takosumi, verified here
   with the shared `STORAGE_TOKEN_SIGNING_KEY`. Token format is owned by
   `src/token.ts` (`takstor_` prefix, HMAC-SHA256); the Takosumi minting side
