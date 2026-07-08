@@ -95,9 +95,12 @@ output "app_deployment" {
       },
     ]
 
-    env = {
-      APP_URL = local.launch_url != null ? local.launch_url : ""
-    }
+    env = merge(
+      local.extra_worker_env,
+      {
+        APP_URL = local.launch_url != null ? local.launch_url : ""
+      },
+    )
   }
 }
 
