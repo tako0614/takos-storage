@@ -97,6 +97,15 @@ describe("takos-storage worker", () => {
     expect(await res.text()).toContain("Takos Storage");
   });
 
+  test("/ui serves the same console surface", async () => {
+    const res = await worker.fetch(request("GET", "/ui"), makeEnv(new MemoryBucket()));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/html");
+    const html = await res.text();
+    expect(html).toContain("Takos Storage");
+    expect(html).toContain("List objects");
+  });
+
   test("PUT then GET round-trips within the prefix", async () => {
     const env = makeEnv(new MemoryBucket());
     const t = await token();

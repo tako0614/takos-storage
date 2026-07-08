@@ -3,7 +3,7 @@
 A standalone, installable **Takos workspace object-store service**. Other apps
 (takos-office, yurucommu, …) bind to it instead of each rolling their own blob
 storage. It is a plain OpenTofu module + prebuilt Cloudflare Worker, installed
-through Takosumi like any other Capsule and surfaced in the Takos launcher.
+through Takosumi like any other Capsule and surfaced in the Capsule launcher.
 
 ## What it is
 
@@ -14,6 +14,9 @@ through Takosumi like any other Capsule and surfaced in the Takos launcher.
 - The service publishes the `takos.storage.object` service export; consumers
   declare a matching `consume` block and receive `TAKOS_STORAGE_API_URL` +
   `TAKOS_STORAGE_ACCESS_TOKEN` injected into their env.
+- The Worker also serves a small browser console at `/` and `/ui`, so an
+  installed storage Capsule is not just a headless API. The console is still
+  scoped-token based; long-lived object credentials are not stored in the UI.
 
 This is **not** the closed `takosumi-cloud` S3-compat platform extension. It is
 an OSS installable Capsule in the same lane as yurucommu / takos-office. S3
@@ -24,6 +27,7 @@ SigV4 compatibility is intentionally out of scope for P0.
 | Method | Path              | Verb | Notes                        |
 | ------ | ----------------- | ---- | ---------------------------- |
 | GET    | `/healthz`        | —    | liveness, no auth            |
+| GET    | `/`, `/ui`        | —    | browser console, no auth     |
 | PUT    | `/o/<key>`        | `w`  | store object                 |
 | GET    | `/o/<key>`        | `r`  | fetch object                 |
 | HEAD   | `/o/<key>`        | `r`  | object metadata              |
