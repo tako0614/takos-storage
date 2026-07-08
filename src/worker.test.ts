@@ -90,6 +90,13 @@ describe("takos-storage worker", () => {
     expect(res.status).toBe(200);
   });
 
+  test("root console needs no auth", async () => {
+    const res = await worker.fetch(request("GET", "/"), makeEnv(new MemoryBucket()));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/html");
+    expect(await res.text()).toContain("Takos Storage");
+  });
+
   test("PUT then GET round-trips within the prefix", async () => {
     const env = makeEnv(new MemoryBucket());
     const t = await token();

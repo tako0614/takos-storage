@@ -72,6 +72,28 @@ output "app_deployment" {
       },
     ]
 
+    publish = [
+      {
+        name      = "launcher"
+        publisher = "web"
+        type      = "interface.ui.surface"
+        outputs = {
+          url = {
+            kind     = "url"
+            routeRef = "root"
+          }
+        }
+        display = {
+          title       = "Takos Storage"
+          description = "Scoped object storage for workspace apps."
+          category    = "storage"
+        }
+        spec = {
+          launcher = true
+        }
+      },
+    ]
+
     env = {
       APP_URL = local.launch_url != null ? local.launch_url : ""
     }
@@ -101,6 +123,24 @@ output "service_exports" {
         title         = "Takos Workspace Storage"
         description   = "Shared object store for workspace apps, isolated per consumer."
         capabilityIds = ["takos.storage.object.v1"]
+      }
+      visibility = "space"
+    },
+    {
+      name         = "launcher"
+      capabilities = ["interface.ui.surface"]
+      endpoints = [
+        {
+          name       = "default"
+          protocol   = "https"
+          pathPrefix = "/"
+          url        = local.launch_url
+        },
+      ]
+      metadata = {
+        title       = "Takos Storage"
+        description = "Open the object storage console for this Capsule."
+        category    = "storage"
       }
       visibility = "space"
     },
