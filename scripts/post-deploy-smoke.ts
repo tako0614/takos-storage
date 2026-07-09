@@ -1,9 +1,9 @@
 const baseInput =
-  process.env.TAKOS_STORAGE_URL ??
-  process.env.TAKOS_STORAGE_API_BASE_URL?.replace(/\/o\/?$/, "") ??
+  process.env.STORAGE_URL ??
+  process.env.STORAGE_API_BASE_URL?.replace(/\/o\/?$/, "") ??
   "";
-const token = process.env.TAKOS_STORAGE_ACCESS_TOKEN ?? "";
-const skipMutation = process.env.TAKOS_STORAGE_SKIP_MUTATION === "1";
+const token = process.env.STORAGE_ACCESS_TOKEN ?? "";
+const skipMutation = process.env.STORAGE_SKIP_MUTATION === "1";
 
 function fail(message: string): never {
   console.error(message);
@@ -11,13 +11,13 @@ function fail(message: string): never {
 }
 
 function resolveBaseUrl(input: string): URL {
-  if (!input) fail("TAKOS_STORAGE_URL or TAKOS_STORAGE_API_BASE_URL is required");
+  if (!input) fail("STORAGE_URL or STORAGE_API_BASE_URL is required");
   try {
     const url = new URL(input);
     url.pathname = url.pathname.replace(/\/$/, "");
     return url;
   } catch {
-    fail("TAKOS_STORAGE_URL must be a valid URL");
+    fail("STORAGE_URL must be a valid URL");
   }
 }
 
@@ -37,8 +37,8 @@ await expectOk(rootUrl);
 await expectOk(healthUrl);
 
 if (!skipMutation) {
-  if (!token) fail("TAKOS_STORAGE_ACCESS_TOKEN is required unless TAKOS_STORAGE_SKIP_MUTATION=1");
-  const prefix = process.env.TAKOS_STORAGE_SMOKE_PREFIX ?? `smoke/${Date.now()}/`;
+  if (!token) fail("STORAGE_ACCESS_TOKEN is required unless STORAGE_SKIP_MUTATION=1");
+  const prefix = process.env.STORAGE_SMOKE_PREFIX ?? `smoke/${Date.now()}/`;
   const key = `${prefix}object.txt`;
   const objectUrl = new URL(`/o/${encodeURIComponent(key)}`, baseUrl);
   const listUrl = new URL("/o", baseUrl);

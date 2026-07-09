@@ -1,6 +1,6 @@
 # takos-storage
 
-A standalone, installable **Takos workspace object-store service**. Other apps
+A standalone, installable **object-store service**. Other apps
 (takos-office, yurucommu, …) bind to it instead of each rolling their own blob
 storage. It is a plain OpenTofu module + prebuilt Cloudflare Worker, installed
 through Takosumi like any other Capsule and surfaced in the Capsule launcher.
@@ -11,9 +11,9 @@ through Takosumi like any other Capsule and surfaced in the Capsule launcher.
 - Every request is gated by a **scoped bearer token** that Takosumi mints at
   bind time. A token is bounded to a key prefix (`pfx`) and a verb set
   (read / write / delete / list), so a consumer app can only touch its slice.
-- The service publishes the `takos.storage.object` service export; consumers
-  declare a matching `consume` block and receive `TAKOS_STORAGE_API_URL` +
-  `TAKOS_STORAGE_ACCESS_TOKEN` injected into their env.
+- The service publishes the `storage.object` service export; consumers declare
+  a matching `consume` block and receive scoped object-storage connection
+  material injected into their env.
 - The Worker also serves a small browser console at `/` and `/ui`, so an
   installed storage Capsule is not just a headless API. The console is still
   scoped-token based; long-lived object credentials are not stored in the UI.
@@ -64,6 +64,6 @@ tofu apply \
 ### Signing key
 
 `storage_token_signing_key` is the shared HMAC key. Leave it empty to generate
-one; it is emitted as the **sensitive** `takos_storage_signing_key` output, which
+one; it is emitted as the **sensitive** `storage_token_signing_key` output, which
 the Takosumi storage credential issuer reads to mint per-consumer tokens. The
 same value is injected into the Worker as `STORAGE_TOKEN_SIGNING_KEY`.

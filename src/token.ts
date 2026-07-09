@@ -39,7 +39,7 @@ export type StorageTokenVerifyResult =
   | { ok: false; reason: "format" | "signature" | "payload" | "version" | "expired" };
 
 const TOKEN_PREFIX = "takstor_";
-const AUDIENCE = "takos.storage.object";
+const AUDIENCE = "storage.object";
 
 export { AUDIENCE as STORAGE_TOKEN_AUDIENCE, TOKEN_PREFIX as STORAGE_TOKEN_PREFIX };
 
