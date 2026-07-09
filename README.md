@@ -41,7 +41,7 @@ Keys and list prefixes must fall within the token's `pfx`; otherwise `403`.
 ```sh
 bun test              # unit tests (token + worker)
 bun run check         # typecheck (tsc --noEmit)
-bun run build:worker  # emit dist/worker.js (the artifact main.tf uploads)
+bun run build:worker  # emit local dist/worker.js for self-host applies
 ```
 
 ## Deploy (OpenTofu)
@@ -59,8 +59,9 @@ tofu apply \
   -var cloudflare_workers_subdomain=<workers-dev-subdomain>
 ```
 
-`dist/worker.js` must exist before apply (build it, or point `worker_bundle_url`
-+ `worker_bundle_sha256` at a released artifact).
+For local/self-host applies, `dist/worker.js` must exist before apply. Hosted
+installs should point `worker_bundle_url` + `worker_bundle_sha256` at a Git
+release or CI artifact instead of committing built output to the repository.
 
 ### Grant signing key
 
