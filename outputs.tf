@@ -8,7 +8,7 @@ output "url" {
   value       = local.launch_url
 }
 
-output "storage_api_base_url" {
+output "object_storage_api_url" {
   description = "Base URL of the workspace object API (the /o surface)."
   value       = local.api_base_url
 }
@@ -28,16 +28,16 @@ output "cloudflare_worker_script_id" {
   value       = try(cloudflare_workers_script.worker[0].id, null)
 }
 
-output "cloudflare_r2_bucket_name" {
-  description = "R2 bucket name backing the BUCKET binding."
+output "object_bucket_name" {
+  description = "Backing object bucket name for the BUCKET binding."
   value       = local.r2_objects_bucket
 }
 
-# Sensitive: the shared HMAC key Takosumi reads to mint scoped access tokens.
+# Sensitive: the shared HMAC key Takosumi reads to mint scoped service grants.
 # Stripped from public projection (never leaves the encrypted output artifact);
-# consumed only by the storage credential issuer.
-output "storage_token_signing_key" {
-  description = "Shared HMAC signing key for scoped storage tokens. Consumed by the storage credential issuer to mint per-consumer tokens."
+# consumed only by the service grant issuer.
+output "service_grant_signing_key" {
+  description = "Shared HMAC signing key for scoped service grants. Consumed by the grant issuer to mint per-consumer access material for the service_exports capability."
   value       = local.effective_signing_key
   sensitive   = true
 }
