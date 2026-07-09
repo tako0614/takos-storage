@@ -1,6 +1,6 @@
 // src/token.ts
 var TOKEN_PREFIX = "takstor_";
-var AUDIENCE = "takos.storage.object";
+var AUDIENCE = "storage.object";
 function b64urlDecode(value) {
   let normalized = value.replace(/-/g, "+").replace(/_/g, "/");
   while (normalized.length % 4 !== 0)

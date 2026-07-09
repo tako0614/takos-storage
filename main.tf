@@ -68,7 +68,7 @@ variable "app_url" {
 }
 
 variable "storage_token_signing_key" {
-  description = "Shared HMAC signing key for scoped storage tokens (64-char lowercase hex). When empty, a key is generated. Takosumi mints tokens with the same value it reads from the takos_storage_signing_key output."
+  description = "Shared HMAC signing key for scoped storage tokens (64-char lowercase hex). When empty, a key is generated. Takosumi mints tokens with the same value it reads from the storage_token_signing_key output."
   type        = string
   default     = ""
   sensitive   = true

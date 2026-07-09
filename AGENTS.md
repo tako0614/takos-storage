@@ -1,7 +1,7 @@
 # AGENTS.md — takos-storage
 
-Standalone installable Capsule providing the `takos.storage.object` object
-store. Sibling product to yurucommu / takos-office; **not** part of the takos
+Standalone installable Capsule providing the `storage.object` object
+store. Sibling product to yurucommu / takos-office; **not** part of the Takos
 worker and **not** the closed `takosumi-cloud` S3-compat extension.
 
 ## Boundaries
@@ -28,6 +28,6 @@ worker and **not** the closed `takosumi-cloud` S3-compat extension.
 
 - Dependency-free Worker (Web Crypto only) so it runs on workerd and typechecks
   without `@cloudflare/workers-types` (minimal R2 types live in `src/types.ts`).
-- `outputs.tf` publishes `service_exports[0].name = "takos.storage.object"`
+- `outputs.tf` publishes `service_exports[0].name = "storage.object"`
   with `storage.object` / `protocol.http.api`; the grant descriptor injects
-  `TAKOS_STORAGE_API_URL` + `TAKOS_STORAGE_ACCESS_TOKEN` into consumers.
+  object-storage connection material into consumers.
