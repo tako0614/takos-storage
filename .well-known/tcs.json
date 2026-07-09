@@ -54,14 +54,14 @@
       }
     },
     {
-      "name": "storage_token_signing_key",
+      "name": "service_grant_signing_key",
       "type": "string",
       "format": "token",
       "secret": true,
       "advanced": true,
       "label": {
-        "ja": "Token signing key",
-        "en": "Token signing key"
+        "ja": "Grant signing key",
+        "en": "Grant signing key"
       }
     },
     {
@@ -104,7 +104,7 @@
       },
       {
         "kind": "initial_secret",
-        "variable": "storage_token_signing_key",
+        "variable": "service_grant_signing_key",
         "secretKind": "token",
         "optional": true
       },
@@ -129,8 +129,8 @@
       "type": "url"
     },
     {
-      "key": "storage_api_base_url",
-      "from": "storage_api_base_url",
+      "key": "object_storage_api_url",
+      "from": "object_storage_api_url",
       "type": "url"
     },
     {

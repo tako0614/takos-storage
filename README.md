@@ -61,9 +61,10 @@ tofu apply \
 `dist/worker.js` must exist before apply (build it, or point `worker_bundle_url`
 + `worker_bundle_sha256` at a released artifact).
 
-### Signing key
+### Grant signing key
 
-`storage_token_signing_key` is the shared HMAC key. Leave it empty to generate
-one; it is emitted as the **sensitive** `storage_token_signing_key` output, which
-the Takosumi storage credential issuer reads to mint per-consumer tokens. The
-same value is injected into the Worker as `STORAGE_TOKEN_SIGNING_KEY`.
+`service_grant_signing_key` is the shared HMAC key. Leave it empty to generate
+one; it is emitted as the **sensitive** `service_grant_signing_key` output, which
+the Takosumi grant issuer reads to mint per-consumer access material for the
+`storage.object` service export. The same value is injected into the Worker as
+`STORAGE_TOKEN_SIGNING_KEY`.
