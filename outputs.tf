@@ -8,8 +8,8 @@ output "url" {
   value       = local.launch_url
 }
 
-output "object_storage_api_url" {
-  description = "Base URL of the workspace object API (the /o surface)."
+output "api_url" {
+  description = "Primary service API URL for the /o object API surface."
   value       = local.api_base_url
 }
 
