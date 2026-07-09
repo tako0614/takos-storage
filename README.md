@@ -55,7 +55,8 @@ tofu apply \
   -var enable_cloudflare_resources=true \
   -var enable_cloudflare_worker_script=true \
   -var cloudflare_account_id=<id> \
-  -var cloudflare_workers_subdomain=<subdomain>
+  -var public_subdomain=<service-subdomain> \
+  -var cloudflare_workers_subdomain=<workers-dev-subdomain>
 ```
 
 `dist/worker.js` must exist before apply (build it, or point `worker_bundle_url`
