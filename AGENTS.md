@@ -28,6 +28,8 @@ worker and **not** the closed `takosumi-cloud` S3-compat extension.
 
 - Dependency-free Worker (Web Crypto only) so it runs on workerd and typechecks
   without `@cloudflare/workers-types` (minimal R2 types live in `src/types.ts`).
-- `outputs.tf` publishes `service_exports[0].name = "storage.object"`
-  with `storage.object` / `protocol.http.api`; the grant descriptor injects
-  object-storage connection material into consumers.
+- `outputs.tf` publishes generic service outputs (`launch_url`, `url`,
+  `public_url`, `api_url`, `app_deployment`, `service_exports`) and
+  `service_exports[0].name = "storage.object"` with `storage.object` /
+  `protocol.http.api`; the grant descriptor injects object-storage connection
+  material into consumers. Do not expose Takos-specific output names.
