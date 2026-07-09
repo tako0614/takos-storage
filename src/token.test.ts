@@ -17,7 +17,7 @@ function payload(over: Partial<StorageTokenPayload> = {}): StorageTokenPayload {
     sub: "inst-consumer",
     pfx: "ws1/",
     cap: ["r", "w", "d", "l"],
-    aud: "takos.storage.object",
+    aud: "storage.object",
     iat: now,
     exp: now + 3600,
     ...over,
@@ -72,7 +72,7 @@ describe("storage token mint/verify", () => {
   // for byte — if either implementation's wire format drifts, this fails.
   test("verifies a golden token minted by the Takosumi issuer", async () => {
     const GOLDEN =
-      "takstor_eyJ2IjoxLCJ3cyI6InNwYWNlX2dvMWRnbzFkZ28xZGdvMWQiLCJzdWIiOiJpbnN0X2dvMWRnbzFkZ28xZGdvMWQiLCJwZngiOiJzcGFjZV9nbzFkZ28xZGdvMWRnbzFkL2luc3RfZ28xZGdvMWRnbzFkZ28xZC8iLCJjYXAiOlsiciIsInciLCJsIl0sImF1ZCI6InRha29zLnN0b3JhZ2Uub2JqZWN0IiwiaWF0IjoxMDAwMDAwMDAwLCJleHAiOjEwMDAwMDA5MDB9.dquD2sbJ1zPXqAp0FMCuUs8Mg_rV6BnKNr2mUvWaQhc";
+      "takstor_eyJ2IjoxLCJ3cyI6InNwYWNlX2dvMWRnbzFkZ28xZGdvMWQiLCJzdWIiOiJpbnN0X2dvMWRnbzFkZ28xZGdvMWQiLCJwZngiOiJzcGFjZV9nbzFkZ28xZGdvMWRnbzFkL2luc3RfZ28xZGdvMWRnbzFkZ28xZC8iLCJjYXAiOlsiciIsInciLCJsIl0sImF1ZCI6InN0b3JhZ2Uub2JqZWN0IiwiaWF0IjoxMDAwMDAwMDAwLCJleHAiOjEwMDAwMDA5MDB9.UBtrbJQQ2AoiB1uSTzqc-fE_8b0F9rDXEdJ5JkQkpMQ";
     const result = await verifyStorageToken(
       "golden-key-fixed-0123456789abcdef",
       GOLDEN,
@@ -80,7 +80,7 @@ describe("storage token mint/verify", () => {
     );
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.payload.aud).toBe("takos.storage.object");
+      expect(result.payload.aud).toBe("storage.object");
       expect(result.payload.pfx).toBe(
         "space_go1dgo1dgo1dgo1d/inst_go1dgo1dgo1dgo1d/",
       );

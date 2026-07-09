@@ -35,9 +35,9 @@ output "cloudflare_r2_bucket_name" {
 
 # Sensitive: the shared HMAC key Takosumi reads to mint scoped access tokens.
 # Stripped from public projection (never leaves the encrypted output artifact);
-# consumed only by the Takosumi storage credential issuer.
-output "takos_storage_signing_key" {
-  description = "Shared HMAC signing key for scoped storage tokens. Consumed by the Takosumi storage credential issuer to mint per-consumer tokens."
+# consumed only by the storage credential issuer.
+output "storage_token_signing_key" {
+  description = "Shared HMAC signing key for scoped storage tokens. Consumed by the storage credential issuer to mint per-consumer tokens."
   value       = local.effective_signing_key
   sensitive   = true
 }
@@ -105,10 +105,10 @@ output "app_deployment" {
 }
 
 output "service_exports" {
-  description = "Runtime service surface published by takos-storage: the workspace object store consumers bind to."
+  description = "Runtime service surface published by takos-storage: the object store consumers bind to."
   value = [
     {
-      name         = "takos.storage.object"
+      name         = "storage.object"
       capabilities = ["storage.object", "protocol.http.api"]
       endpoints = [
         {
@@ -124,9 +124,9 @@ output "service_exports" {
       # shape (scopes / injected env var names) is owned by the CONSUMER's
       # `consume` block and the Takosumi issuer, not advertised here.
       metadata = {
-        title         = "Takos Workspace Storage"
-        description   = "Shared object store for workspace apps, isolated per consumer."
-        capabilityIds = ["takos.storage.object.v1"]
+        title         = "Object Storage"
+        description   = "Shared object store isolated per consumer."
+        capabilityIds = ["storage.object.v1"]
       }
       visibility = "space"
     },
