@@ -23,7 +23,7 @@ worker and **not** the closed `takosumi-cloud` S3-compat extension.
 - `bun run check` — `bunx tsc --noEmit` (source only; tests run under bun).
 - `bun run build:worker` — emit local `dist/worker.js` for self-host applies;
   hosted installs should use `worker_bundle_url` + `worker_bundle_sha256` from a
-  Git release or CI artifact.
+  Git release or CI artifact. Do not commit built output.
 - `tofu fmt` / `tofu validate` — module hygiene.
 
 ## Conventions
