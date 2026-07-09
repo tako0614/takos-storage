@@ -1,5 +1,5 @@
 output "launch_url" {
-  description = "Public URL for the published takos-storage service, when the Capsule has enough hostname input to derive it."
+  description = "Public URL for the published object-storage service, when the Capsule has enough hostname input to derive it."
   value       = local.launch_url
 }
 
@@ -43,7 +43,7 @@ output "service_grant_signing_key" {
 }
 
 output "app_deployment" {
-  description = "Installable app declaration consumed from tofu output -json by Takos/Takosumi install flows."
+  description = "Installable app declaration consumed from tofu output -json by Capsule projection flows."
   value = {
     contractVersion = 1
     name            = "takos-storage"
@@ -105,7 +105,7 @@ output "app_deployment" {
 }
 
 output "service_exports" {
-  description = "Runtime service surface published by takos-storage: the object store consumers bind to."
+  description = "Runtime service surface published by this Capsule: object-store consumers bind to it through the storage.object capability."
   value = [
     {
       name         = "storage.object"
