@@ -129,8 +129,8 @@
       "type": "url"
     },
     {
-      "key": "object_storage_api_url",
-      "from": "object_storage_api_url",
+      "key": "api_url",
+      "from": "api_url",
       "type": "url"
     },
     {
