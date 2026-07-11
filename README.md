@@ -15,8 +15,11 @@ through Takosumi like any other Capsule and surfaced in the Capsule launcher.
   a matching `consume` block and receive scoped object-storage connection
   material injected into their env.
 - The Worker also serves a small browser console at `/` and `/ui`, so an
-  installed storage Capsule is not just a headless API. The console is still
-  scoped-token based; long-lived object credentials are not stored in the UI.
+  installed storage Capsule is not just a headless API. Its drive routes use
+  the optional user OIDC session and never accept app-owned object grants.
+- Agents use the bearer-protected Streamable HTTP MCP endpoint at `/mcp`.
+  Its six `storage_file_*` tools are confined to the user-facing `drive/`
+  area and cannot access app-owned objects exposed through `/o`.
 
 This is **not** the closed `takosumi-cloud` S3-compat platform extension. It is
 an OSS installable Capsule in the same lane as yurucommu / takos-office. S3
@@ -28,6 +31,7 @@ SigV4 compatibility is intentionally out of scope for P0.
 | ------ | ----------------- | ---- | ---------------------------- |
 | GET    | `/healthz`        | —    | liveness, no auth            |
 | GET    | `/`, `/ui`        | —    | browser console, no auth     |
+| POST   | `/mcp`            | —    | Streamable HTTP MCP          |
 | PUT    | `/o/<key>`        | `w`  | store object                 |
 | GET    | `/o/<key>`        | `r`  | fetch object                 |
 | HEAD   | `/o/<key>`        | `r`  | object metadata              |
@@ -35,6 +39,24 @@ SigV4 compatibility is intentionally out of scope for P0.
 | GET    | `/o?prefix=<p>`   | `l`  | list keys under a prefix     |
 
 Keys and list prefixes must fall within the token's `pfx`; otherwise `403`.
+
+## MCP surface
+
+`/mcp` publishes exactly these tools:
+
+- `storage_file_list`
+- `storage_file_read`
+- `storage_file_write`
+- `storage_file_info`
+- `storage_file_delete`
+- `storage_file_move`
+
+Paths are always relative to the fixed `drive/` bucket prefix. Read and write
+support UTF-8 text or base64, and decoded files are limited to 50 MiB. Listings
+accept an opaque R2 continuation cursor. The endpoint fails closed when
+`PUBLISHED_MCP_AUTH_TOKEN` is absent; OpenTofu generates the token by default,
+injects it as a Worker secret, and publishes the endpoint as
+`protocol.mcp.server` with the `mcp.invoke` scope.
 
 ## Develop
 
@@ -70,3 +92,11 @@ one; it is emitted as the **sensitive** `service_grant_signing_key` output, whic
 the Takosumi grant issuer reads to mint per-consumer access material for the
 `storage.object` service export. The same value is injected into the Worker as
 `STORAGE_TOKEN_SIGNING_KEY`.
+
+### MCP bearer
+
+`published_mcp_auth_token` optionally supplies the bearer used by `/mcp`.
+Leave it empty to generate a 32-byte value. Direct OpenTofu consumers can read
+the sensitive `published_mcp_auth_token` output; Capsule projection uses the
+generated `PUBLISHED_MCP_AUTH_TOKEN` resource referenced by the MCP
+publication.
