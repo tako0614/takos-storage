@@ -79,6 +79,18 @@ variable "service_grant_signing_key" {
   }
 }
 
+variable "published_mcp_auth_token" {
+  description = "Optional bearer token protecting the published /mcp endpoint. A 32-byte token is generated when empty."
+  type        = string
+  default     = ""
+  sensitive   = true
+
+  validation {
+    condition     = trimspace(var.published_mcp_auth_token) == "" || length(trimspace(var.published_mcp_auth_token)) >= 32
+    error_message = "published_mcp_auth_token must be empty or at least 32 characters."
+  }
+}
+
 variable "env" {
   description = "Additional non-secret Worker environment variables projected as plain_text bindings. Secrets must use dedicated sensitive variables or Provider Connections."
   type        = map(string)
@@ -93,6 +105,7 @@ variable "env" {
         "BUCKET",
         "APP_URL",
         "STORAGE_TOKEN_SIGNING_KEY",
+        "PUBLISHED_MCP_AUTH_TOKEN",
         "OIDC_ISSUER_URL",
         "OIDC_CLIENT_ID",
         "APP_AUTH_REQUIRED",
@@ -164,7 +177,7 @@ variable "worker_bundle_path" {
 variable "worker_release_tag" {
   description = "GitHub release tag whose takosumi-artifact.json selects the default Worker bundle and SHA-256. Set empty to use worker_bundle_path."
   type        = string
-  default     = "v0.2.1"
+  default     = "v0.2.2"
 
   validation {
     condition     = trimspace(var.worker_release_tag) == "" || can(regex("^v[0-9]+\\.[0-9]+\\.[0-9]+([-+][0-9A-Za-z.-]+)?$", trimspace(var.worker_release_tag)))
@@ -257,9 +270,12 @@ locals {
   workers_dev_url  = trimspace(var.cloudflare_workers_subdomain) != "" ? "https://${local.public_subdomain}.${trimspace(var.cloudflare_workers_subdomain)}.workers.dev" : null
   launch_url       = trimspace(var.public_url) != "" ? trimspace(var.public_url) : local.workers_dev_url
   api_base_url     = local.launch_url != null ? "${local.launch_url}/o" : null
+  mcp_url          = local.launch_url != null ? "${local.launch_url}/mcp" : null
 
   provided_signing_key  = trimspace(var.service_grant_signing_key)
   effective_signing_key = local.provided_signing_key != "" ? local.provided_signing_key : random_id.signing_key.hex
+  provided_mcp_token    = trimspace(var.published_mcp_auth_token)
+  effective_mcp_token   = local.provided_mcp_token != "" ? local.provided_mcp_token : random_id.published_mcp_auth_token.hex
   extra_worker_env      = { for name, value in var.env : name => value if trimspace(value) != "" }
 
   app_auth_enabled         = trimspace(var.takosumi_accounts_issuer_url) != "" && trimspace(var.takosumi_accounts_client_id) != ""
@@ -295,6 +311,14 @@ resource "random_id" "signing_key" {
 }
 
 resource "random_id" "session_secret" {
+  byte_length = 32
+
+  keepers = {
+    project_name = local.resource_prefix
+  }
+}
+
+resource "random_id" "published_mcp_auth_token" {
   byte_length = 32
 
   keepers = {
@@ -353,6 +377,11 @@ resource "cloudflare_workers_script" "worker" {
         type = "secret_text"
         name = "STORAGE_TOKEN_SIGNING_KEY"
         text = local.effective_signing_key
+      },
+      {
+        type = "secret_text"
+        name = "PUBLISHED_MCP_AUTH_TOKEN"
+        text = local.effective_mcp_token
       },
     ],
     local.app_auth_enabled ? [

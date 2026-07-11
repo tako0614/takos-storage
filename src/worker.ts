@@ -9,6 +9,7 @@
  *   GET    /, /ui            workspace drive UI (OIDC session when enabled)
  *   /api/auth/*              OIDC login/callback/me/logout (app-auth.ts)
  *   /api/drive/*             session-authed workspace drive files (drive.ts)
+ *   POST   /mcp              bearer-protected storage_file_* MCP tools
  *   PUT    /o/<key>          store an object          (verb: w)
  *   GET    /o/<key>          fetch an object          (verb: r)
  *   HEAD   /o/<key>          object metadata          (verb: r)
@@ -23,7 +24,12 @@ import type { Env } from "./types.ts";
 import { storageConsoleHtml } from "./console.ts";
 import { handleAuthRoute } from "./app-auth.ts";
 import { handleDriveRoute } from "./drive.ts";
-import { type StorageTokenVerb, tokenAllows, verifyStorageToken } from "./token.ts";
+import { handleMcpRoute } from "./mcp.ts";
+import {
+  type StorageTokenVerb,
+  tokenAllows,
+  verifyStorageToken,
+} from "./token.ts";
 
 const OBJECT_PREFIX = "/o/";
 
@@ -57,9 +63,15 @@ export default {
     if (request.method === "GET" && url.pathname === "/healthz") {
       return json({ status: "ok", service: "takos-storage" });
     }
-    if (request.method === "GET" && (url.pathname === "/" || url.pathname === "/ui")) {
+    if (
+      request.method === "GET" &&
+      (url.pathname === "/" || url.pathname === "/ui")
+    ) {
       return html(storageConsoleHtml());
     }
+
+    const mcpResponse = await handleMcpRoute(request, env);
+    if (mcpResponse) return mcpResponse;
 
     // ---- Workspace drive (user session) ----
     const authResponse = await handleAuthRoute(request, env);
@@ -82,13 +94,16 @@ export default {
       env.STORAGE_TOKEN_SIGNING_KEY,
       bearer[1],
     );
-    if (!verified.ok) return json({ error: "invalid_token", reason: verified.reason }, 401);
+    if (!verified.ok)
+      return json({ error: "invalid_token", reason: verified.reason }, 401);
     const { payload } = verified;
 
     // --- list ---
     if (isListPath) {
-      if (request.method !== "GET") return json({ error: "method_not_allowed" }, 405);
-      if (!payload.cap.includes("l")) return json({ error: "forbidden", verb: "l" }, 403);
+      if (request.method !== "GET")
+        return json({ error: "method_not_allowed" }, 405);
+      if (!payload.cap.includes("l"))
+        return json({ error: "forbidden", verb: "l" }, 403);
       const requested = url.searchParams.get("prefix") ?? "";
       if (payload.pfx && !requested.startsWith(payload.pfx)) {
         return json({ error: "forbidden_prefix", allowed: payload.pfx }, 403);
@@ -118,21 +133,25 @@ export default {
 
     const verb = VERB_BY_METHOD[request.method];
     if (!verb) return json({ error: "method_not_allowed" }, 405);
-    if (!tokenAllows(payload, verb, key)) return json({ error: "forbidden", verb, key }, 403);
+    if (!tokenAllows(payload, verb, key))
+      return json({ error: "forbidden", verb, key }, 403);
 
     if (verb === "r") {
       const object = await env.BUCKET.get(key);
       if (!object) return json({ error: "not_found" }, 404);
       const headers = new Headers({
-        "content-type": object.httpMetadata?.contentType ?? "application/octet-stream",
+        "content-type":
+          object.httpMetadata?.contentType ?? "application/octet-stream",
       });
       if (object.httpEtag) headers.set("etag", object.httpEtag);
-      if (request.method === "HEAD") return new Response(null, { status: 200, headers });
+      if (request.method === "HEAD")
+        return new Response(null, { status: 200, headers });
       return new Response(object.body, { status: 200, headers });
     }
 
     if (verb === "w") {
-      const contentType = request.headers.get("content-type") ?? "application/octet-stream";
+      const contentType =
+        request.headers.get("content-type") ?? "application/octet-stream";
       const data = await request.arrayBuffer();
       await env.BUCKET.put(key, data, { httpMetadata: { contentType } });
       return json({ ok: true, key }, 201);
