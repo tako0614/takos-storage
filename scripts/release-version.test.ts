@@ -1,13 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 
-const [packageSource, moduleSource, outputsSource] = await Promise.all([
-  readFile(new URL("../package.json", import.meta.url), "utf8"),
-  readFile(new URL("../main.tf", import.meta.url), "utf8"),
-  readFile(new URL("../outputs.tf", import.meta.url), "utf8"),
-]);
+const [packageSource, moduleSource, outputsSource, repoMetadataSource] =
+  await Promise.all([
+    readFile(new URL("../package.json", import.meta.url), "utf8"),
+    readFile(new URL("../main.tf", import.meta.url), "utf8"),
+    readFile(new URL("../outputs.tf", import.meta.url), "utf8"),
+    readFile(new URL("../.well-known/tcs.json", import.meta.url), "utf8"),
+  ]);
 
-const packageVersion = (JSON.parse(packageSource) as { version: string }).version;
+const packageVersion = (JSON.parse(packageSource) as { version: string })
+  .version;
 
 describe("release version", () => {
   test("keeps the OpenTofu artifact default and app declaration aligned", () => {
@@ -23,5 +26,21 @@ describe("release version", () => {
     const gitRef = process.env.GITHUB_REF_NAME;
     if (!gitRef?.startsWith("v")) return;
     expect(gitRef).toBe(`v${packageVersion}`);
+  });
+
+  test("declares the implemented OIDC callback in repo-owned install metadata", () => {
+    const metadata = JSON.parse(repoMetadataSource) as {
+      installExperience?: {
+        projections?: Array<{ kind?: string; callbackPath?: string }>;
+      };
+    };
+    expect(metadata.installExperience?.projections).toContainEqual({
+      kind: "oidc_client",
+      variables: {
+        issuerUrl: "takosumi_accounts_issuer_url",
+        clientId: "takosumi_accounts_client_id",
+      },
+      callbackPath: "/api/auth/callback/takos",
+    });
   });
 });

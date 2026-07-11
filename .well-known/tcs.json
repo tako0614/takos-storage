@@ -61,6 +61,14 @@
           "routePattern": "cloudflare_route_pattern"
         },
         "baseDomain": "app.takos.jp"
+      },
+      {
+        "kind": "oidc_client",
+        "variables": {
+          "issuerUrl": "takosumi_accounts_issuer_url",
+          "clientId": "takosumi_accounts_client_id"
+        },
+        "callbackPath": "/api/auth/callback/takos"
       }
     ]
   }
