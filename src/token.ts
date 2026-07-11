@@ -1,13 +1,13 @@
 /**
  * Scoped storage access token.
  *
- * A short-lived, HMAC-SHA256 signed bearer token that authorizes a single
+ * A persistent, HMAC-SHA256 signed service credential that authorizes a single
  * consumer installation to touch a bounded key space (`pfx`) with a bounded
  * set of verbs (`cap`). Takosumi mints these at bind time with the shared
  * signing key it injected into this service; the storage Worker verifies them
  * on every request. The token is opaque to the consumer.
  *
- * Wire form: `takstor_<base64url(payload)>.<base64url(hmac)>`
+ * Wire form: `tksvc_<base64url(payload)>.<base64url(hmac)>`
  *
  * This module is intentionally dependency-free and runs on Web Crypto so the
  * exact same format can be re-implemented on the Takosumi minting side.
@@ -30,15 +30,13 @@ export interface StorageTokenPayload {
   aud: string;
   /** Issued-at (unix seconds). */
   iat: number;
-  /** Expiry (unix seconds). */
-  exp: number;
 }
 
 export type StorageTokenVerifyResult =
   | { ok: true; payload: StorageTokenPayload }
-  | { ok: false; reason: "format" | "signature" | "payload" | "version" | "expired" };
+  | { ok: false; reason: "format" | "signature" | "payload" | "version" };
 
-const TOKEN_PREFIX = "takstor_";
+const TOKEN_PREFIX = "tksvc_";
 const AUDIENCE = "storage.object";
 
 export { AUDIENCE as STORAGE_TOKEN_AUDIENCE, TOKEN_PREFIX as STORAGE_TOKEN_PREFIX };
@@ -81,11 +79,10 @@ export async function mintStorageToken(
   return `${TOKEN_PREFIX}${body}.${b64urlEncode(signature)}`;
 }
 
-/** Verify signature, version, and expiry. Does NOT check scope — see {@link tokenAllows}. */
+/** Verify signature and version. Does NOT check scope — see {@link tokenAllows}. */
 export async function verifyStorageToken(
   signingKey: string,
   token: string,
-  nowSeconds: number,
 ): Promise<StorageTokenVerifyResult> {
   if (!token.startsWith(TOKEN_PREFIX)) return { ok: false, reason: "format" };
   const rest = token.slice(TOKEN_PREFIX.length);
@@ -122,9 +119,6 @@ export async function verifyStorageToken(
   // can never produce a whole-bucket token.
   if (typeof payload.pfx !== "string" || payload.pfx.length === 0) {
     return { ok: false, reason: "version" };
-  }
-  if (typeof payload.exp !== "number" || payload.exp <= nowSeconds) {
-    return { ok: false, reason: "expired" };
   }
   return { ok: true, payload };
 }

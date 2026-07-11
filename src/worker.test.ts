@@ -63,7 +63,6 @@ function makeEnv(bucket: R2Bucket): Env {
 }
 
 async function token(over: Partial<StorageTokenPayload> = {}): Promise<string> {
-  const now = Math.floor(Date.now() / 1000);
   return mintStorageToken(SECRET, {
     v: 1,
     ws: "ws1",
@@ -71,8 +70,7 @@ async function token(over: Partial<StorageTokenPayload> = {}): Promise<string> {
     pfx: "ws1/office/",
     cap: ["r", "w", "d", "l"],
     aud: "storage.object",
-    iat: now,
-    exp: now + 3600,
+    iat: Math.floor(Date.now() / 1000),
     ...over,
   });
 }
@@ -97,13 +95,43 @@ describe("takos-storage worker", () => {
     expect(await res.text()).toContain("Takos Storage");
   });
 
-  test("/ui serves the same console surface", async () => {
+  test("/ui serves the same drive surface", async () => {
     const res = await worker.fetch(request("GET", "/ui"), makeEnv(new MemoryBucket()));
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/html");
     const html = await res.text();
     expect(html).toContain("Takos Storage");
-    expect(html).toContain("List objects");
+    expect(html).toContain('id="splash"');
+  });
+
+  test("console ships the drive-style file manager", async () => {
+    const res = await worker.fetch(request("GET", "/"), makeEnv(new MemoryBucket()));
+    const html = await res.text();
+    // The drive UI runs on the user session surface, never on tksvc_ credentials.
+    expect(html).toContain("/api/drive/list");
+    expect(html).toContain("/api/auth/me");
+    expect(html).toContain("/api/auth/login");
+    expect(html).not.toContain("tksvc_");
+    // Drive chrome: New menu (upload / new folder), nav, list/grid, sorting.
+    expect(html).toContain('data-new="upload"');
+    expect(html).toContain('data-new="folder"');
+    expect(html).toContain('data-nav="recent"');
+    expect(html).toContain('data-view="list"');
+    expect(html).toContain('data-view="grid"');
+    expect(html).toContain('data-sort="name"');
+    expect(html).toContain('data-sort="uploaded"');
+    // Item actions confirm through dialogs, not window.confirm/prompt.
+    expect(html).toContain('data-action="rename"');
+    expect(html).toContain('data-action="delete"');
+    expect(html).toContain('id="delete-dialog"');
+    expect(html).not.toContain("window.confirm");
+    expect(html).not.toContain("window.prompt");
+    // en + ja catalogs ship together.
+    expect(html).toContain("My Drive");
+    expect(html).toContain("マイドライブ");
+    expect(html).toContain("新しいフォルダ");
+    expect(html).toContain("ファイルをアップロード");
+    expect(html).toContain("最終更新");
   });
 
   test("PUT then GET round-trips within the prefix", async () => {
