@@ -10,7 +10,7 @@ worker and **not** the closed `takosumi-cloud` S3-compat extension.
   only. Plain OpenTofu module + prebuilt Worker; no Takosumi-specific manifest.
 - Access is via **bind-time scoped tokens** minted by Takosumi, verified here
   with the shared `STORAGE_TOKEN_SIGNING_KEY`. Token format is owned by
-  `src/token.ts` (`takstor_` prefix, HMAC-SHA256); the Takosumi minting side
+  `src/token.ts` (`tksvc_` prefix, HMAC-SHA256); the Takosumi minting side
   MUST match this format byte-for-byte.
 - Substrate (the R2 bucket) is provisioned by this module's own `main.tf`, not
   by the takos deploy module.

@@ -93,9 +93,48 @@ variable "env" {
         "BUCKET",
         "APP_URL",
         "STORAGE_TOKEN_SIGNING_KEY",
+        "OIDC_ISSUER_URL",
+        "OIDC_CLIENT_ID",
+        "APP_AUTH_REQUIRED",
       ], name)
     ])
     error_message = "env keys must be uppercase Worker plain-text variable names and must not be secret-like or reserved by the takos-storage module."
+  }
+}
+
+variable "takosumi_accounts_issuer_url" {
+  description = "Optional Takosumi Accounts OIDC issuer URL. When set together with takosumi_accounts_client_id, the workspace drive UI requires sign-in."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = trimspace(var.takosumi_accounts_issuer_url) == "" || can(regex("^https://[^[:space:]]+$", trimspace(var.takosumi_accounts_issuer_url)))
+    error_message = "takosumi_accounts_issuer_url must be empty or an https URL."
+  }
+}
+
+variable "takosumi_accounts_client_id" {
+  description = "Optional Takosumi Accounts OIDC client id used with takosumi_accounts_issuer_url (public client; PKCE)."
+  type        = string
+  default     = ""
+}
+
+variable "takosumi_accounts_client_secret" {
+  description = "Optional OIDC client secret for confidential clients. Leave empty for PKCE public clients."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "app_session_secret" {
+  description = "HMAC secret sealing drive UI session cookies. Generated when empty and sign-in is enabled."
+  type        = string
+  default     = ""
+  sensitive   = true
+
+  validation {
+    condition     = trimspace(var.app_session_secret) == "" || length(trimspace(var.app_session_secret)) >= 16
+    error_message = "app_session_secret must be empty or at least 16 characters."
   }
 }
 
@@ -125,7 +164,7 @@ variable "worker_bundle_path" {
 variable "worker_release_tag" {
   description = "GitHub release tag whose takosumi-artifact.json selects the default Worker bundle and SHA-256. Set empty to use worker_bundle_path."
   type        = string
-  default     = "v0.1.3"
+  default     = "v0.2.0"
 
   validation {
     condition     = trimspace(var.worker_release_tag) == "" || can(regex("^v[0-9]+\\.[0-9]+\\.[0-9]+([-+][0-9A-Za-z.-]+)?$", trimspace(var.worker_release_tag)))
@@ -223,6 +262,11 @@ locals {
   effective_signing_key = local.provided_signing_key != "" ? local.provided_signing_key : random_id.signing_key.hex
   extra_worker_env      = { for name, value in var.env : name => value if trimspace(value) != "" }
 
+  app_auth_enabled         = trimspace(var.takosumi_accounts_issuer_url) != "" && trimspace(var.takosumi_accounts_client_id) != ""
+  provided_session_secret  = trimspace(var.app_session_secret)
+  effective_session_secret = local.provided_session_secret != "" ? local.provided_session_secret : random_id.session_secret.hex
+  oidc_redirect_uri        = local.launch_url != null ? "${local.launch_url}/api/auth/callback/takos" : null
+
   r2_objects_bucket = "${local.resource_prefix}-objects"
 }
 
@@ -243,6 +287,14 @@ data "http" "worker_release_manifest" {
 }
 
 resource "random_id" "signing_key" {
+  byte_length = 32
+
+  keepers = {
+    project_name = local.resource_prefix
+  }
+}
+
+resource "random_id" "session_secret" {
   byte_length = 32
 
   keepers = {
@@ -303,6 +355,35 @@ resource "cloudflare_workers_script" "worker" {
         text = local.effective_signing_key
       },
     ],
+    local.app_auth_enabled ? [
+      {
+        type = "plain_text"
+        name = "OIDC_ISSUER_URL"
+        text = trimspace(var.takosumi_accounts_issuer_url)
+      },
+      {
+        type = "plain_text"
+        name = "OIDC_CLIENT_ID"
+        text = trimspace(var.takosumi_accounts_client_id)
+      },
+      {
+        type = "plain_text"
+        name = "APP_AUTH_REQUIRED"
+        text = "1"
+      },
+      {
+        type = "secret_text"
+        name = "APP_SESSION_SECRET"
+        text = local.effective_session_secret
+      },
+    ] : [],
+    local.app_auth_enabled && trimspace(var.takosumi_accounts_client_secret) != "" ? [
+      {
+        type = "secret_text"
+        name = "OIDC_CLIENT_SECRET"
+        text = trimspace(var.takosumi_accounts_client_secret)
+      },
+    ] : [],
     [
       for name, value in local.extra_worker_env : {
         type = "plain_text"

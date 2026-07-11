@@ -52,7 +52,7 @@ output "app_deployment" {
   value = {
     contractVersion = 1
     name            = "takos-storage"
-    version         = "0.1.0"
+    version         = "0.2.0"
 
     compute = {
       web = {
@@ -148,11 +148,16 @@ output "service_exports" {
       ]
       metadata = {
         title       = "Takos Storage"
-        description = "Open the object storage console for this Capsule."
+        description = "Open the workspace drive for this Capsule."
         icon        = "/icons/takos-storage.svg"
         category    = "storage"
       }
       visibility = "space"
     },
   ]
+}
+
+output "oidc_redirect_uri" {
+  description = "OAuth redirect URI to register on the Takosumi Accounts OIDC client when drive sign-in is enabled."
+  value       = local.oidc_redirect_uri
 }

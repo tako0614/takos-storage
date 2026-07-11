@@ -51,4 +51,18 @@ export interface Env {
   STORAGE_TOKEN_SIGNING_KEY: string;
   /** Public URL of this service, when known. */
   APP_URL?: string;
+
+  // ---- Workspace drive (user-facing) auth ----
+  /** "1"/"true" gates the drive UI + /api/drive behind an OIDC session. */
+  APP_AUTH_REQUIRED?: string;
+  /** Takosumi Accounts OIDC issuer, e.g. https://accounts.example. */
+  OIDC_ISSUER_URL?: string;
+  /** OIDC client id (public client; PKCE). */
+  OIDC_CLIENT_ID?: string;
+  /** Optional OIDC client secret for confidential clients. */
+  OIDC_CLIENT_SECRET?: string;
+  /** HMAC secret sealing the session + OAuth state cookies. */
+  APP_SESSION_SECRET?: string;
+  /** Optional workspace id the session must be a member of. */
+  APP_SPACE_ID?: string;
 }
