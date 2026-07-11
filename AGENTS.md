@@ -16,6 +16,10 @@ worker and **not** the closed `takosumi-cloud` S3-compat extension.
   by the takos deploy module.
 - S3 SigV4 compatibility is deferred (P0.5); keep the surface a plain HTTP
   object API for now.
+- The published `/mcp` endpoint is a dependency-free, bearer-protected
+  Streamable HTTP server. Its `storage_file_*` tools are fixed to the
+  user-facing `drive/` prefix and must never reuse `/o` service grants or
+  expose app-owned `storage.object` keys.
 
 ## Tasks
 
@@ -30,8 +34,13 @@ worker and **not** the closed `takosumi-cloud` S3-compat extension.
 
 - Dependency-free Worker (Web Crypto only) so it runs on workerd and typechecks
   without `@cloudflare/workers-types` (minimal R2 types live in `src/types.ts`).
+- Keep the MCP surface to `storage_file_list/read/write/info/delete/move`, with
+  accurate MCP annotations, fail-closed `PUBLISHED_MCP_AUTH_TOKEN` auth,
+  drive-relative path validation, and a 50 MiB decoded-file limit.
 - `outputs.tf` publishes generic service outputs (`launch_url`, `url`,
-  `public_url`, `api_url`, `app_deployment`, `service_exports`) and
+  `public_url`, `api_url`, `mcp_url`, `app_deployment`, `service_exports`) and
   `service_exports[0].name = "storage.object"` with `storage.object` /
   `protocol.http.api`; the grant descriptor injects object-storage connection
-  material into consumers. Do not expose Takos-specific output names.
+  material into consumers. The MCP publication references a generated
+  `PUBLISHED_MCP_AUTH_TOKEN` secret and advertises `mcp.invoke`. Do not expose
+  Takos-specific output names.

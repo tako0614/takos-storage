@@ -18,6 +18,11 @@ output "api_url" {
   value       = local.api_base_url
 }
 
+output "mcp_url" {
+  description = "Published Streamable HTTP MCP endpoint."
+  value       = local.mcp_url
+}
+
 output "service_runtime_name" {
   description = "Implementation runtime name used when enable_cloudflare_worker_script is true."
   value       = local.runtime_name
@@ -47,12 +52,18 @@ output "service_grant_signing_key" {
   sensitive   = true
 }
 
+output "published_mcp_auth_token" {
+  description = "Bearer credential for direct clients of the published /mcp endpoint."
+  value       = local.effective_mcp_token
+  sensitive   = true
+}
+
 output "app_deployment" {
   description = "Installable app declaration consumed from tofu output -json by Capsule projection flows."
   value = {
     contractVersion = 1
     name            = "takos-storage"
-    version         = "0.2.1"
+    version         = "0.2.2"
 
     compute = {
       web = {
@@ -67,6 +78,12 @@ output "app_deployment" {
         bind = "BUCKET"
         to   = ["web"]
       }
+      published_mcp_auth_token = {
+        type     = "secret"
+        bind     = "PUBLISHED_MCP_AUTH_TOKEN"
+        to       = ["web"]
+        generate = true
+      }
     }
 
     routes = [
@@ -74,6 +91,12 @@ output "app_deployment" {
         id     = "root"
         target = "web"
         path   = "/"
+      },
+      {
+        id      = "mcp"
+        target  = "web"
+        path    = "/mcp"
+        methods = ["POST"]
       },
     ]
 
@@ -98,6 +121,29 @@ output "app_deployment" {
           launcher = true
         }
       },
+      {
+        name      = "takos-storage-mcp"
+        publisher = "web"
+        type      = "protocol.mcp.server"
+        outputs = {
+          url = {
+            kind     = "url"
+            routeRef = "mcp"
+          }
+        }
+        auth = {
+          bearer = {
+            secretRef = "PUBLISHED_MCP_AUTH_TOKEN"
+          }
+        }
+        display = {
+          title       = "Takos Storage MCP"
+          description = "Workspace drive file tools over Streamable HTTP."
+        }
+        spec = {
+          protocol = "streamable-http"
+        }
+      },
     ]
 
     env = merge(
@@ -110,7 +156,7 @@ output "app_deployment" {
 }
 
 output "service_exports" {
-  description = "Runtime service surface published by this Capsule: object-store consumers bind to it through the storage.object capability."
+  description = "Runtime surfaces published by this Capsule: object-store consumers bind through storage.object and agents discover the drive MCP through protocol.mcp.server."
   value = [
     {
       name         = "storage.object"
@@ -151,6 +197,30 @@ output "service_exports" {
         description = "Open the workspace drive for this Capsule."
         icon        = "/icons/takos-storage.svg"
         category    = "storage"
+      }
+      visibility = "space"
+    },
+    {
+      name         = "takos-storage-mcp"
+      capabilities = ["protocol.mcp.server"]
+      endpoints = [
+        {
+          name       = "streamable-http"
+          protocol   = "https"
+          pathPrefix = "/mcp"
+          url        = local.mcp_url
+        },
+      ]
+      auth = [
+        {
+          scheme = "bearer"
+          scopes = ["mcp.invoke"]
+        },
+      ]
+      metadata = {
+        title       = "Takos Storage MCP"
+        description = "Workspace drive file tools over Streamable HTTP."
+        protocol    = "streamable-http"
       }
       visibility = "space"
     },

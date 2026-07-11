@@ -22,15 +22,24 @@ export interface R2Object {
 export interface R2Objects {
   objects: R2Object[];
   truncated: boolean;
+  /** Opaque continuation cursor returned when `truncated` is true. */
+  cursor?: string;
 }
 
 export interface R2PutOptions {
   httpMetadata?: R2HttpMetadata;
+  onlyIf?:
+    | {
+        etagMatches?: string;
+        etagDoesNotMatch?: string;
+      }
+    | Headers;
 }
 
 export interface R2ListOptions {
   prefix?: string;
   limit?: number;
+  cursor?: string;
 }
 
 export interface R2Bucket {
@@ -39,7 +48,7 @@ export interface R2Bucket {
     key: string,
     value: ArrayBuffer | ReadableStream | string,
     options?: R2PutOptions,
-  ): Promise<R2Object>;
+  ): Promise<R2Object | null>;
   delete(key: string): Promise<void>;
   list(options?: R2ListOptions): Promise<R2Objects>;
 }
@@ -49,6 +58,8 @@ export interface Env {
   BUCKET: R2Bucket;
   /** Shared HMAC signing key; Takosumi mints tokens with the same value. */
   STORAGE_TOKEN_SIGNING_KEY: string;
+  /** Bearer credential protecting the published Streamable HTTP MCP server. */
+  PUBLISHED_MCP_AUTH_TOKEN?: string;
   /** Public URL of this service, when known. */
   APP_URL?: string;
 
