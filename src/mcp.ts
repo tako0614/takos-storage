@@ -640,7 +640,7 @@ export async function handleMcpRoute(
     return jsonRpcResult(id, {
       protocolVersion: MCP_PROTOCOL_VERSION,
       capabilities: { tools: { listChanged: false } },
-      serverInfo: { name: "takos-storage", version: "0.2.2" },
+      serverInfo: { name: "takos-storage", version: "0.2.3" },
     });
   }
   if (body.method === "notifications/initialized") {

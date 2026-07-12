@@ -11,6 +11,11 @@ through Takosumi like any other Capsule and surfaced in the Capsule launcher.
 - Every request is gated by a **scoped bearer token** that Takosumi mints at
   bind time. A token is bounded to a key prefix (`pfx`) and a verb set
   (read / write / delete / list), so a consumer app can only touch its slice.
+- Deterministic Capsule removal: by default the OpenTofu module calls a
+  module-owned, bearer-protected lifecycle endpoint before deleting the Worker
+  and R2 bucket. Set `purge_objects_on_destroy = false` to make deletion of a
+  non-empty bucket fail closed instead. The executor needs `curl` for this
+  destroy-time step.
 - The service publishes the `storage.object` service export; consumers declare
   a matching `consume` block and receive scoped object-storage connection
   material injected into their env.
@@ -27,16 +32,16 @@ SigV4 compatibility is intentionally out of scope for P0.
 
 ## HTTP surface
 
-| Method | Path              | Verb | Notes                        |
-| ------ | ----------------- | ---- | ---------------------------- |
-| GET    | `/healthz`        | —    | liveness, no auth            |
-| GET    | `/`, `/ui`        | —    | browser console, no auth     |
-| POST   | `/mcp`            | —    | Streamable HTTP MCP          |
-| PUT    | `/o/<key>`        | `w`  | store object                 |
-| GET    | `/o/<key>`        | `r`  | fetch object                 |
-| HEAD   | `/o/<key>`        | `r`  | object metadata              |
-| DELETE | `/o/<key>`        | `d`  | remove object                |
-| GET    | `/o?prefix=<p>`   | `l`  | list keys under a prefix     |
+| Method | Path            | Verb | Notes                    |
+| ------ | --------------- | ---- | ------------------------ |
+| GET    | `/healthz`      | —    | liveness, no auth        |
+| GET    | `/`, `/ui`      | —    | browser console, no auth |
+| POST   | `/mcp`          | —    | Streamable HTTP MCP      |
+| PUT    | `/o/<key>`      | `w`  | store object             |
+| GET    | `/o/<key>`      | `r`  | fetch object             |
+| HEAD   | `/o/<key>`      | `r`  | object metadata          |
+| DELETE | `/o/<key>`      | `d`  | remove object            |
+| GET    | `/o?prefix=<p>` | `l`  | list keys under a prefix |
 
 Keys and list prefixes must fall within the token's `pfx`; otherwise `403`.
 
