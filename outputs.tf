@@ -58,12 +58,18 @@ output "published_mcp_auth_token" {
   sensitive   = true
 }
 
+output "storage_admin_token" {
+  description = "Bearer credential for explicit destructive storage administration. Keep encrypted and never project publicly."
+  value       = local.effective_admin_token
+  sensitive   = true
+}
+
 output "app_deployment" {
   description = "Installable app declaration consumed from tofu output -json by Capsule projection flows."
   value = {
     contractVersion = 1
     name            = "takos-storage"
-    version         = "0.2.3"
+    version         = "0.2.4"
 
     compute = {
       web = {

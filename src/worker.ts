@@ -15,7 +15,7 @@
  *   HEAD   /o/<key>          object metadata          (verb: r)
  *   DELETE /o/<key>          remove an object         (verb: d)
  *   GET    /o?prefix=<p>     list keys under a prefix (verb: l)
- *   POST   /internal/lifecycle/purge  empty the module-owned bucket before destroy
+ *   POST   /api/admin/empty  explicitly empty the module-owned bucket
  *
  * S3 SigV4 compatibility is intentionally out of scope for P0 (see the repo
  * README); this surface exists to prove the bind-time scoped-token flow.
@@ -33,7 +33,7 @@ import {
 } from "./token.ts";
 
 const OBJECT_PREFIX = "/o/";
-const LIFECYCLE_PURGE_PATH = "/internal/lifecycle/purge";
+const ADMIN_EMPTY_PATH = "/api/admin/empty";
 const MAX_PURGE_PASSES = 10_000;
 
 function json(body: unknown, status = 200): Response {
@@ -70,22 +70,22 @@ function constantTimeEqual(left: string, right: string): boolean {
   return difference === 0;
 }
 
-async function handleLifecyclePurge(
+async function handleAdminEmpty(
   request: Request,
   env: Env,
 ): Promise<Response | null> {
   const url = new URL(request.url);
-  if (url.pathname !== LIFECYCLE_PURGE_PATH) return null;
+  if (url.pathname !== ADMIN_EMPTY_PATH) return null;
   if (request.method !== "POST") {
     return json({ error: "method_not_allowed" }, 405);
   }
-  const expected = env.LIFECYCLE_PURGE_TOKEN ?? "";
+  const expected = env.STORAGE_ADMIN_TOKEN ?? "";
   const authorization = request.headers.get("authorization") ?? "";
   const provided = /^Bearer\s+(.+)$/i.exec(authorization)?.[1] ?? "";
   if (
     expected.length < 32 ||
     !constantTimeEqual(provided, expected) ||
-    request.headers.get("x-takos-storage-action") !== "purge"
+    request.headers.get("x-takos-storage-action") !== "empty"
   ) {
     return json({ error: "not_found" }, 404);
   }
@@ -100,7 +100,7 @@ async function handleLifecyclePurge(
     await env.BUCKET.delete(keys);
     deleted += keys.length;
   }
-  return json({ error: "purge_limit_exceeded", deleted }, 500);
+  return json({ error: "empty_limit_exceeded", deleted }, 500);
 }
 
 export default {
@@ -110,8 +110,8 @@ export default {
     if (request.method === "GET" && url.pathname === "/healthz") {
       return json({ status: "ok", service: "takos-storage" });
     }
-    const lifecycleResponse = await handleLifecyclePurge(request, env);
-    if (lifecycleResponse) return lifecycleResponse;
+    const adminResponse = await handleAdminEmpty(request, env);
+    if (adminResponse) return adminResponse;
     if (
       request.method === "GET" &&
       (url.pathname === "/" || url.pathname === "/ui")
