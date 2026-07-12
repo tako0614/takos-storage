@@ -2,7 +2,14 @@ import { describe, expect, test } from "bun:test";
 
 import worker from "./worker.ts";
 import { mintStorageToken, type StorageTokenPayload } from "./token.ts";
-import type { Env, R2Bucket, R2ListOptions, R2Object, R2Objects, R2PutOptions } from "./types.ts";
+import type {
+  Env,
+  R2Bucket,
+  R2ListOptions,
+  R2Object,
+  R2Objects,
+  R2PutOptions,
+} from "./types.ts";
 
 const SECRET = "worker-test-signing-key-abcdef";
 
@@ -34,13 +41,16 @@ class MemoryBucket implements R2Bucket {
     else data = new Uint8Array(await new Response(value).arrayBuffer());
     this.store.set(key, {
       data,
-      contentType: options?.httpMetadata?.contentType ?? "application/octet-stream",
+      contentType:
+        options?.httpMetadata?.contentType ?? "application/octet-stream",
     });
     return (await this.get(key)) as R2Object;
   }
 
-  async delete(key: string): Promise<void> {
-    this.store.delete(key);
+  async delete(keys: string | string[]): Promise<void> {
+    for (const key of Array.isArray(keys) ? keys : [keys]) {
+      this.store.delete(key);
+    }
   }
 
   async list(options?: R2ListOptions): Promise<R2Objects> {
@@ -59,7 +69,11 @@ class MemoryBucket implements R2Bucket {
 }
 
 function makeEnv(bucket: R2Bucket): Env {
-  return { BUCKET: bucket, STORAGE_TOKEN_SIGNING_KEY: SECRET };
+  return {
+    BUCKET: bucket,
+    STORAGE_TOKEN_SIGNING_KEY: SECRET,
+    LIFECYCLE_PURGE_TOKEN: "lifecycle-purge-token-at-least-32-characters",
+  };
 }
 
 async function token(over: Partial<StorageTokenPayload> = {}): Promise<string> {
@@ -75,28 +89,79 @@ async function token(over: Partial<StorageTokenPayload> = {}): Promise<string> {
   });
 }
 
-function request(method: string, path: string, opts: { token?: string; body?: string } = {}): Request {
+function request(
+  method: string,
+  path: string,
+  opts: { token?: string; body?: string } = {},
+): Request {
   const headers: Record<string, string> = {};
   if (opts.token) headers.authorization = `Bearer ${opts.token}`;
   if (opts.body !== undefined) headers["content-type"] = "text/plain";
-  return new Request(`https://storage.example${path}`, { method, headers, body: opts.body });
+  return new Request(`https://storage.example${path}`, {
+    method,
+    headers,
+    body: opts.body,
+  });
 }
 
 describe("takos-storage worker", () => {
   test("healthz needs no auth", async () => {
-    const res = await worker.fetch(request("GET", "/healthz"), makeEnv(new MemoryBucket()));
+    const res = await worker.fetch(
+      request("GET", "/healthz"),
+      makeEnv(new MemoryBucket()),
+    );
     expect(res.status).toBe(200);
   });
 
   test("root console needs no auth", async () => {
-    const res = await worker.fetch(request("GET", "/"), makeEnv(new MemoryBucket()));
+    const res = await worker.fetch(
+      request("GET", "/"),
+      makeEnv(new MemoryBucket()),
+    );
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/html");
     expect(await res.text()).toContain("Takos Storage");
   });
 
+  test("destroy lifecycle purge is fail-closed and removes every object", async () => {
+    const bucket = new MemoryBucket();
+    await bucket.put("drive/user-file", "drive");
+    await bucket.put("space/consumer/document", "app");
+    const env = makeEnv(bucket);
+
+    const unauthorized = await worker.fetch(
+      new Request("https://storage.example/internal/lifecycle/purge", {
+        method: "POST",
+        headers: {
+          authorization: "Bearer wrong-token",
+          "x-takos-storage-action": "purge",
+        },
+      }),
+      env,
+    );
+    expect(unauthorized.status).toBe(404);
+    expect(bucket.store.size).toBe(2);
+
+    const purged = await worker.fetch(
+      new Request("https://storage.example/internal/lifecycle/purge", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${env.LIFECYCLE_PURGE_TOKEN}`,
+          "x-takos-storage-action": "purge",
+        },
+      }),
+      env,
+    );
+    expect(purged.status).toBe(200);
+    expect(await purged.json()).toEqual({ ok: true, deleted: 2 });
+    expect(bucket.store.size).toBe(0);
+  });
+
   test("/ui serves the same drive surface", async () => {
-    const res = await worker.fetch(request("GET", "/ui"), makeEnv(new MemoryBucket()));
+    const res = await worker.fetch(
+      request("GET", "/ui"),
+      makeEnv(new MemoryBucket()),
+    );
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/html");
     const html = await res.text();
@@ -105,7 +170,10 @@ describe("takos-storage worker", () => {
   });
 
   test("console ships the drive-style file manager", async () => {
-    const res = await worker.fetch(request("GET", "/"), makeEnv(new MemoryBucket()));
+    const res = await worker.fetch(
+      request("GET", "/"),
+      makeEnv(new MemoryBucket()),
+    );
     const html = await res.text();
     // The drive UI runs on the user session surface, never on tksvc_ credentials.
     expect(html).toContain("/api/drive/list");
@@ -142,13 +210,19 @@ describe("takos-storage worker", () => {
       env,
     );
     expect(put.status).toBe(201);
-    const get = await worker.fetch(request("GET", "/o/ws1/office/doc.md", { token: t }), env);
+    const get = await worker.fetch(
+      request("GET", "/o/ws1/office/doc.md", { token: t }),
+      env,
+    );
     expect(get.status).toBe(200);
     expect(await get.text()).toBe("hello");
   });
 
   test("rejects missing token", async () => {
-    const res = await worker.fetch(request("GET", "/o/ws1/office/doc.md"), makeEnv(new MemoryBucket()));
+    const res = await worker.fetch(
+      request("GET", "/o/ws1/office/doc.md"),
+      makeEnv(new MemoryBucket()),
+    );
     expect(res.status).toBe(401);
   });
 
@@ -165,7 +239,10 @@ describe("takos-storage worker", () => {
   test("rejects access outside the token prefix", async () => {
     const env = makeEnv(new MemoryBucket());
     const t = await token({ pfx: "ws1/office/" });
-    const res = await worker.fetch(request("GET", "/o/ws1/secrets/other.md", { token: t }), env);
+    const res = await worker.fetch(
+      request("GET", "/o/ws1/secrets/other.md", { token: t }),
+      env,
+    );
     expect(res.status).toBe(403);
   });
 
@@ -173,24 +250,45 @@ describe("takos-storage worker", () => {
     const bucket = new MemoryBucket();
     const env = makeEnv(bucket);
     const t = await token();
-    await worker.fetch(request("PUT", "/o/ws1/office/a.md", { token: t, body: "a" }), env);
-    await worker.fetch(request("PUT", "/o/ws1/office/b.md", { token: t, body: "b" }), env);
+    await worker.fetch(
+      request("PUT", "/o/ws1/office/a.md", { token: t, body: "a" }),
+      env,
+    );
+    await worker.fetch(
+      request("PUT", "/o/ws1/office/b.md", { token: t, body: "b" }),
+      env,
+    );
 
-    const ok = await worker.fetch(request("GET", "/o?prefix=ws1/office/", { token: t }), env);
+    const ok = await worker.fetch(
+      request("GET", "/o?prefix=ws1/office/", { token: t }),
+      env,
+    );
     expect(ok.status).toBe(200);
     expect((await ok.json()).objects).toHaveLength(2);
 
-    const outside = await worker.fetch(request("GET", "/o?prefix=ws1/secrets/", { token: t }), env);
+    const outside = await worker.fetch(
+      request("GET", "/o?prefix=ws1/secrets/", { token: t }),
+      env,
+    );
     expect(outside.status).toBe(403);
   });
 
   test("DELETE removes an object", async () => {
     const env = makeEnv(new MemoryBucket());
     const t = await token();
-    await worker.fetch(request("PUT", "/o/ws1/office/gone.md", { token: t, body: "z" }), env);
-    const del = await worker.fetch(request("DELETE", "/o/ws1/office/gone.md", { token: t }), env);
+    await worker.fetch(
+      request("PUT", "/o/ws1/office/gone.md", { token: t, body: "z" }),
+      env,
+    );
+    const del = await worker.fetch(
+      request("DELETE", "/o/ws1/office/gone.md", { token: t }),
+      env,
+    );
     expect(del.status).toBe(200);
-    const get = await worker.fetch(request("GET", "/o/ws1/office/gone.md", { token: t }), env);
+    const get = await worker.fetch(
+      request("GET", "/o/ws1/office/gone.md", { token: t }),
+      env,
+    );
     expect(get.status).toBe(404);
   });
 });
