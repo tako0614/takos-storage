@@ -91,10 +91,16 @@ variable "published_mcp_auth_token" {
   }
 }
 
-variable "purge_objects_on_destroy" {
-  description = "Delete every object through the module-owned Worker immediately before destroying its R2 bucket. Keep true for removable Capsules; set false only to make non-empty bucket destruction fail closed. Requires curl on the OpenTofu executor."
-  type        = bool
-  default     = true
+variable "storage_admin_token" {
+  description = "Optional bearer token for destructive storage administration such as POST /api/admin/empty. A 32-byte token is generated when empty."
+  type        = string
+  default     = ""
+  sensitive   = true
+
+  validation {
+    condition     = trimspace(var.storage_admin_token) == "" || length(trimspace(var.storage_admin_token)) >= 32
+    error_message = "storage_admin_token must be empty or at least 32 characters."
+  }
 }
 
 variable "env" {
@@ -112,7 +118,7 @@ variable "env" {
         "APP_URL",
         "STORAGE_TOKEN_SIGNING_KEY",
         "PUBLISHED_MCP_AUTH_TOKEN",
-        "LIFECYCLE_PURGE_TOKEN",
+        "STORAGE_ADMIN_TOKEN",
         "OIDC_ISSUER_URL",
         "OIDC_CLIENT_ID",
         "APP_AUTH_REQUIRED",
@@ -184,7 +190,7 @@ variable "worker_bundle_path" {
 variable "worker_release_tag" {
   description = "GitHub release tag whose takosumi-artifact.json selects the default Worker bundle and SHA-256. Set empty to use worker_bundle_path."
   type        = string
-  default     = "v0.2.3"
+  default     = "v0.2.4"
 
   validation {
     condition     = trimspace(var.worker_release_tag) == "" || can(regex("^v[0-9]+\\.[0-9]+\\.[0-9]+([-+][0-9A-Za-z.-]+)?$", trimspace(var.worker_release_tag)))
@@ -283,6 +289,8 @@ locals {
   effective_signing_key = local.provided_signing_key != "" ? local.provided_signing_key : random_id.signing_key.hex
   provided_mcp_token    = trimspace(var.published_mcp_auth_token)
   effective_mcp_token   = local.provided_mcp_token != "" ? local.provided_mcp_token : random_id.published_mcp_auth_token.hex
+  provided_admin_token  = trimspace(var.storage_admin_token)
+  effective_admin_token = local.provided_admin_token != "" ? local.provided_admin_token : random_id.admin_token.hex
   extra_worker_env      = { for name, value in var.env : name => value if trimspace(value) != "" }
 
   app_auth_enabled         = trimspace(var.takosumi_accounts_issuer_url) != "" && trimspace(var.takosumi_accounts_client_id) != ""
@@ -333,7 +341,7 @@ resource "random_id" "published_mcp_auth_token" {
   }
 }
 
-resource "random_id" "lifecycle_purge_token" {
+resource "random_id" "admin_token" {
   byte_length = 32
 
   keepers = {
@@ -400,8 +408,8 @@ resource "cloudflare_workers_script" "worker" {
       },
       {
         type = "secret_text"
-        name = "LIFECYCLE_PURGE_TOKEN"
-        text = random_id.lifecycle_purge_token.hex
+        name = "STORAGE_ADMIN_TOKEN"
+        text = local.effective_admin_token
       },
     ],
     local.app_auth_enabled ? [
@@ -463,38 +471,6 @@ resource "cloudflare_workers_script" "worker" {
       error_message = "worker_bundle_sha256 does not match worker_bundle_path."
     }
 
-    precondition {
-      condition     = !var.purge_objects_on_destroy || local.launch_url != null
-      error_message = "purge_objects_on_destroy requires public_url or cloudflare_workers_subdomain so the destroy-time lifecycle endpoint is reachable."
-    }
-  }
-}
-
-resource "terraform_data" "purge_objects_before_destroy" {
-  count = local.cloudflare_worker_enabled && var.purge_objects_on_destroy ? 1 : 0
-
-  input = {
-    url   = coalesce(local.launch_url, "")
-    token = sensitive(random_id.lifecycle_purge_token.hex)
-  }
-
-  depends_on = [
-    cloudflare_workers_script.worker,
-    cloudflare_workers_script_subdomain.worker,
-    cloudflare_workers_route.worker,
-  ]
-
-  provisioner "local-exec" {
-    when = destroy
-
-    environment = {
-      STORAGE_LIFECYCLE_PURGE_URL   = self.input.url
-      STORAGE_LIFECYCLE_PURGE_TOKEN = self.input.token
-    }
-
-    command = <<-EOT
-      curl --fail --silent --show-error --request POST --header "authorization: Bearer $STORAGE_LIFECYCLE_PURGE_TOKEN" --header "x-takos-storage-action: purge" "$STORAGE_LIFECYCLE_PURGE_URL/internal/lifecycle/purge"
-    EOT
   }
 }
 
