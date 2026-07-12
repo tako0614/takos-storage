@@ -91,6 +91,12 @@ variable "published_mcp_auth_token" {
   }
 }
 
+variable "purge_objects_on_destroy" {
+  description = "Delete every object through the module-owned Worker immediately before destroying its R2 bucket. Keep true for removable Capsules; set false only to make non-empty bucket destruction fail closed. Requires curl on the OpenTofu executor."
+  type        = bool
+  default     = true
+}
+
 variable "env" {
   description = "Additional non-secret Worker environment variables projected as plain_text bindings. Secrets must use dedicated sensitive variables or Provider Connections."
   type        = map(string)
@@ -106,6 +112,7 @@ variable "env" {
         "APP_URL",
         "STORAGE_TOKEN_SIGNING_KEY",
         "PUBLISHED_MCP_AUTH_TOKEN",
+        "LIFECYCLE_PURGE_TOKEN",
         "OIDC_ISSUER_URL",
         "OIDC_CLIENT_ID",
         "APP_AUTH_REQUIRED",
@@ -177,7 +184,7 @@ variable "worker_bundle_path" {
 variable "worker_release_tag" {
   description = "GitHub release tag whose takosumi-artifact.json selects the default Worker bundle and SHA-256. Set empty to use worker_bundle_path."
   type        = string
-  default     = "v0.2.2"
+  default     = "v0.2.3"
 
   validation {
     condition     = trimspace(var.worker_release_tag) == "" || can(regex("^v[0-9]+\\.[0-9]+\\.[0-9]+([-+][0-9A-Za-z.-]+)?$", trimspace(var.worker_release_tag)))
@@ -326,6 +333,14 @@ resource "random_id" "published_mcp_auth_token" {
   }
 }
 
+resource "random_id" "lifecycle_purge_token" {
+  byte_length = 32
+
+  keepers = {
+    project_name = local.resource_prefix
+  }
+}
+
 data "http" "worker_bundle" {
   count              = local.worker_bundle_uses_url ? 1 : 0
   url                = local.worker_bundle_url
@@ -382,6 +397,11 @@ resource "cloudflare_workers_script" "worker" {
         type = "secret_text"
         name = "PUBLISHED_MCP_AUTH_TOKEN"
         text = local.effective_mcp_token
+      },
+      {
+        type = "secret_text"
+        name = "LIFECYCLE_PURGE_TOKEN"
+        text = random_id.lifecycle_purge_token.hex
       },
     ],
     local.app_auth_enabled ? [
@@ -442,6 +462,39 @@ resource "cloudflare_workers_script" "worker" {
       condition     = local.worker_bundle_uses_url || local.worker_bundle_uses_manifest || local.worker_bundle_expected_sha256 == "" || local.worker_bundle_expected_sha256 == local.worker_bundle_content_sha256
       error_message = "worker_bundle_sha256 does not match worker_bundle_path."
     }
+
+    precondition {
+      condition     = !var.purge_objects_on_destroy || local.launch_url != null
+      error_message = "purge_objects_on_destroy requires public_url or cloudflare_workers_subdomain so the destroy-time lifecycle endpoint is reachable."
+    }
+  }
+}
+
+resource "terraform_data" "purge_objects_before_destroy" {
+  count = local.cloudflare_worker_enabled && var.purge_objects_on_destroy ? 1 : 0
+
+  input = {
+    url   = coalesce(local.launch_url, "")
+    token = sensitive(random_id.lifecycle_purge_token.hex)
+  }
+
+  depends_on = [
+    cloudflare_workers_script.worker,
+    cloudflare_workers_script_subdomain.worker,
+    cloudflare_workers_route.worker,
+  ]
+
+  provisioner "local-exec" {
+    when = destroy
+
+    environment = {
+      STORAGE_LIFECYCLE_PURGE_URL   = self.input.url
+      STORAGE_LIFECYCLE_PURGE_TOKEN = self.input.token
+    }
+
+    command = <<-EOT
+      curl --fail --silent --show-error --request POST --header "authorization: Bearer $STORAGE_LIFECYCLE_PURGE_TOKEN" --header "x-takos-storage-action: purge" "$STORAGE_LIFECYCLE_PURGE_URL/internal/lifecycle/purge"
+    EOT
   }
 }
 

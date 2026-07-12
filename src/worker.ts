@@ -15,6 +15,7 @@
  *   HEAD   /o/<key>          object metadata          (verb: r)
  *   DELETE /o/<key>          remove an object         (verb: d)
  *   GET    /o?prefix=<p>     list keys under a prefix (verb: l)
+ *   POST   /internal/lifecycle/purge  empty the module-owned bucket before destroy
  *
  * S3 SigV4 compatibility is intentionally out of scope for P0 (see the repo
  * README); this surface exists to prove the bind-time scoped-token flow.
@@ -32,6 +33,8 @@ import {
 } from "./token.ts";
 
 const OBJECT_PREFIX = "/o/";
+const LIFECYCLE_PURGE_PATH = "/internal/lifecycle/purge";
+const MAX_PURGE_PASSES = 10_000;
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -56,6 +59,50 @@ const VERB_BY_METHOD: Record<string, StorageTokenVerb> = {
   DELETE: "d",
 };
 
+function constantTimeEqual(left: string, right: string): boolean {
+  const leftBytes = new TextEncoder().encode(left);
+  const rightBytes = new TextEncoder().encode(right);
+  const length = Math.max(leftBytes.length, rightBytes.length);
+  let difference = leftBytes.length ^ rightBytes.length;
+  for (let index = 0; index < length; index += 1) {
+    difference |= (leftBytes[index] ?? 0) ^ (rightBytes[index] ?? 0);
+  }
+  return difference === 0;
+}
+
+async function handleLifecyclePurge(
+  request: Request,
+  env: Env,
+): Promise<Response | null> {
+  const url = new URL(request.url);
+  if (url.pathname !== LIFECYCLE_PURGE_PATH) return null;
+  if (request.method !== "POST") {
+    return json({ error: "method_not_allowed" }, 405);
+  }
+  const expected = env.LIFECYCLE_PURGE_TOKEN ?? "";
+  const authorization = request.headers.get("authorization") ?? "";
+  const provided = /^Bearer\s+(.+)$/i.exec(authorization)?.[1] ?? "";
+  if (
+    expected.length < 32 ||
+    !constantTimeEqual(provided, expected) ||
+    request.headers.get("x-takos-storage-action") !== "purge"
+  ) {
+    return json({ error: "not_found" }, 404);
+  }
+
+  let deleted = 0;
+  for (let pass = 0; pass < MAX_PURGE_PASSES; pass += 1) {
+    const listing = await env.BUCKET.list({ limit: 1000 });
+    const keys = listing.objects.map((object) => object.key);
+    if (keys.length === 0) {
+      return json({ ok: true, deleted });
+    }
+    await env.BUCKET.delete(keys);
+    deleted += keys.length;
+  }
+  return json({ error: "purge_limit_exceeded", deleted }, 500);
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -63,6 +110,8 @@ export default {
     if (request.method === "GET" && url.pathname === "/healthz") {
       return json({ status: "ok", service: "takos-storage" });
     }
+    const lifecycleResponse = await handleLifecyclePurge(request, env);
+    if (lifecycleResponse) return lifecycleResponse;
     if (
       request.method === "GET" &&
       (url.pathname === "/" || url.pathname === "/ui")

@@ -63,7 +63,7 @@ output "app_deployment" {
   value = {
     contractVersion = 1
     name            = "takos-storage"
-    version         = "0.2.2"
+    version         = "0.2.3"
 
     compute = {
       web = {

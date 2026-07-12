@@ -49,7 +49,7 @@ export interface R2Bucket {
     value: ArrayBuffer | ReadableStream | string,
     options?: R2PutOptions,
   ): Promise<R2Object | null>;
-  delete(key: string): Promise<void>;
+  delete(keys: string | string[]): Promise<void>;
   list(options?: R2ListOptions): Promise<R2Objects>;
 }
 
@@ -60,6 +60,8 @@ export interface Env {
   STORAGE_TOKEN_SIGNING_KEY: string;
   /** Bearer credential protecting the published Streamable HTTP MCP server. */
   PUBLISHED_MCP_AUTH_TOKEN?: string;
+  /** Module-owned credential for the OpenTofu destroy-time bucket purge. */
+  LIFECYCLE_PURGE_TOKEN?: string;
   /** Public URL of this service, when known. */
   APP_URL?: string;
 
