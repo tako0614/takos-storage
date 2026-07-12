@@ -60,8 +60,8 @@ export interface Env {
   STORAGE_TOKEN_SIGNING_KEY: string;
   /** Bearer credential protecting the published Streamable HTTP MCP server. */
   PUBLISHED_MCP_AUTH_TOKEN?: string;
-  /** Module-owned credential for the OpenTofu destroy-time bucket purge. */
-  LIFECYCLE_PURGE_TOKEN?: string;
+  /** Bearer credential for destructive storage administration operations. */
+  STORAGE_ADMIN_TOKEN?: string;
   /** Public URL of this service, when known. */
   APP_URL?: string;
 

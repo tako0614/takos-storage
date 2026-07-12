@@ -72,7 +72,7 @@ function makeEnv(bucket: R2Bucket): Env {
   return {
     BUCKET: bucket,
     STORAGE_TOKEN_SIGNING_KEY: SECRET,
-    LIFECYCLE_PURGE_TOKEN: "lifecycle-purge-token-at-least-32-characters",
+    STORAGE_ADMIN_TOKEN: "storage-admin-token-at-least-32-characters",
   };
 }
 
@@ -123,18 +123,18 @@ describe("takos-storage worker", () => {
     expect(await res.text()).toContain("Takos Storage");
   });
 
-  test("destroy lifecycle purge is fail-closed and removes every object", async () => {
+  test("admin empty is fail-closed and removes every object", async () => {
     const bucket = new MemoryBucket();
     await bucket.put("drive/user-file", "drive");
     await bucket.put("space/consumer/document", "app");
     const env = makeEnv(bucket);
 
     const unauthorized = await worker.fetch(
-      new Request("https://storage.example/internal/lifecycle/purge", {
+      new Request("https://storage.example/api/admin/empty", {
         method: "POST",
         headers: {
           authorization: "Bearer wrong-token",
-          "x-takos-storage-action": "purge",
+          "x-takos-storage-action": "empty",
         },
       }),
       env,
@@ -143,11 +143,11 @@ describe("takos-storage worker", () => {
     expect(bucket.store.size).toBe(2);
 
     const purged = await worker.fetch(
-      new Request("https://storage.example/internal/lifecycle/purge", {
+      new Request("https://storage.example/api/admin/empty", {
         method: "POST",
         headers: {
-          authorization: `Bearer ${env.LIFECYCLE_PURGE_TOKEN}`,
-          "x-takos-storage-action": "purge",
+          authorization: `Bearer ${env.STORAGE_ADMIN_TOKEN}`,
+          "x-takos-storage-action": "empty",
         },
       }),
       env,
