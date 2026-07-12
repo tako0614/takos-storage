@@ -1,6 +1,11 @@
+import { readFile } from "node:fs/promises";
+
+const outputs = await readCapsuleOutputs();
 const baseInput =
   process.env.STORAGE_URL ??
   process.env.STORAGE_API_BASE_URL?.replace(/\/o\/?$/, "") ??
+  stringOutput(outputs, "url", "public_url", "launch_url") ??
+  process.env.TAKOSUMI_CAPSULE_PUBLIC_URL ??
   "";
 const token = process.env.STORAGE_ACCESS_TOKEN ?? "";
 const skipMutation = process.env.STORAGE_SKIP_MUTATION === "1";
@@ -24,9 +29,31 @@ function resolveBaseUrl(input: string): URL {
 async function expectOk(url: URL, init?: RequestInit): Promise<Response> {
   const response = await fetch(url, init);
   if (!response.ok) {
-    fail(`${init?.method ?? "GET"} ${url.pathname}${url.search} failed: ${response.status}`);
+    fail(
+      `${init?.method ?? "GET"} ${url.pathname}${url.search} failed: ${response.status}`,
+    );
   }
   return response;
+}
+
+async function readCapsuleOutputs(): Promise<Record<string, unknown>> {
+  const file = process.env.TAKOSUMI_CAPSULE_OUTPUTS_FILE;
+  if (!file) return {};
+  const parsed: unknown = JSON.parse(await readFile(file, "utf8"));
+  return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+    ? (parsed as Record<string, unknown>)
+    : {};
+}
+
+function stringOutput(
+  outputs: Record<string, unknown>,
+  ...names: string[]
+): string | undefined {
+  for (const name of names) {
+    const value = outputs[name];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return undefined;
 }
 
 const baseUrl = resolveBaseUrl(baseInput);
@@ -35,9 +62,11 @@ const healthUrl = new URL("/healthz", baseUrl);
 
 await expectOk(rootUrl);
 await expectOk(healthUrl);
+const checks = ["root", "health"];
 
 if (!skipMutation) {
-  if (!token) fail("STORAGE_ACCESS_TOKEN is required unless STORAGE_SKIP_MUTATION=1");
+  if (!token)
+    fail("STORAGE_ACCESS_TOKEN is required unless STORAGE_SKIP_MUTATION=1");
   const prefix = process.env.STORAGE_SMOKE_PREFIX ?? `smoke/${Date.now()}/`;
   const key = `${prefix}object.txt`;
   const objectUrl = new URL(`/o/${encodeURIComponent(key)}`, baseUrl);
@@ -50,18 +79,37 @@ if (!skipMutation) {
     headers: { ...headers, "content-type": "text/plain; charset=utf-8" },
     body: "takos-storage smoke",
   });
+  checks.push("object.put");
   const read = await expectOk(objectUrl, { headers });
-  if ((await read.text()) !== "takos-storage smoke") fail("stored object body did not round-trip");
+  if ((await read.text()) !== "takos-storage smoke")
+    fail("stored object body did not round-trip");
+  checks.push("object.get");
   await expectOk(objectUrl, { method: "HEAD", headers });
-  await expectOk(listUrl, { headers });
+  checks.push("object.head");
+  const listing = (await (await expectOk(listUrl, { headers })).json()) as {
+    objects?: { key?: string }[];
+  };
+  if (!listing.objects?.some((object) => object.key === key)) {
+    fail("stored object was not present in the prefix listing");
+  }
+  checks.push("object.list");
   await expectOk(objectUrl, { method: "DELETE", headers });
+  checks.push("object.delete");
+  const deleted = await fetch(objectUrl, { headers });
+  if (deleted.status !== 404)
+    fail(`deleted object remained readable: ${deleted.status}`);
+  checks.push("object.cleanup");
 }
 
 console.log(
   JSON.stringify({
+    kind: "takosumi.capsule-functional-probe@v1",
+    status: "passed",
+    product: "takos-storage",
+    checks: checks.map((name) => ({ name, status: "passed" })),
+    cleanupVerified: true,
     ok: true,
     service: "takos-storage",
-    url: rootUrl.toString(),
     mutated: !skipMutation,
   }),
 );
