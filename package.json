@@ -12,10 +12,10 @@
     "storage:migrate-binding-prefix": "bun run scripts/migrate-r2-binding-prefix.ts",
     "test": "bun test",
     "audit": "bun audit --audit-level=high",
-    "check": "bunx tsc --noEmit",
-    "lint": "bunx eslint . --max-warnings=0",
-    "fmt": "bunx prettier --write .",
-    "fmt:check": "bunx prettier --check ."
+    "check": "bun run tsc --noEmit",
+    "lint": "bun run eslint . --max-warnings=0",
+    "fmt": "bun run prettier --write .",
+    "fmt:check": "bun run prettier --check ."
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
