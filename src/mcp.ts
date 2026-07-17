@@ -3,12 +3,17 @@
  *
  * This is intentionally a separate surface from `/o`: MCP callers can only
  * address user-facing files below the server-owned `drive/` prefix, while app
- * consumers continue to use independently scoped `tksvc_` grants with `/o`.
- * The implementation is dependency-free and stateless; every request is one
- * Streamable HTTP JSON-RPC exchange protected by PUBLISHED_MCP_AUTH_TOKEN.
+ * consumers use independently authorized InterfaceBindings with `/o`.
+ * The implementation is dependency-free and stateless; managed calls use an
+ * exact `mcp.invoke` Interface OAuth credential. Direct/self-host operators may
+ * explicitly configure PUBLISHED_MCP_AUTH_TOKEN as a standalone fallback.
  */
 
 import type { Env, R2Object } from "./types.ts";
+import {
+  hasValidInterfaceOAuthConfiguration,
+  verifyInterfaceOAuthBearer,
+} from "./interface-oauth-auth.ts";
 
 export const MAX_STORAGE_FILE_BYTES = 50 * 1024 * 1024;
 const MAX_MCP_REQUEST_BYTES = 70 * 1024 * 1024;
@@ -547,21 +552,65 @@ async function constantTimeEqual(
   return different === 0;
 }
 
-async function authorize(request: Request, env: Env): Promise<Response | null> {
+async function authorize(
+  request: Request,
+  env: Env,
+  interfaceUserInfoFetch?: (
+    input: RequestInfo | URL,
+    init?: RequestInit,
+  ) => Promise<Response>,
+): Promise<Response | null> {
   const configured = env.PUBLISHED_MCP_AUTH_TOKEN?.trim();
-  if (!configured) {
+  const base = env.APP_URL?.trim();
+  let audience = "";
+  try {
+    if (!base) throw new Error("APP_URL is required");
+    audience = new URL("/mcp", `${base.replace(/\/$/u, "")}/`).href;
+  } catch {
+    // Invalid configuration remains fail closed.
+  }
+  const rawRevision = env.APP_MCP_INTERFACE_RESOLVED_REVISION;
+  const interfaceRevision =
+    rawRevision && /^[1-9][0-9]*$/u.test(rawRevision)
+      ? Number(rawRevision)
+      : undefined;
+  const interfaceOAuthConfigured = hasValidInterfaceOAuthConfiguration({
+    issuerUrl: env.OIDC_ISSUER_URL,
+    audience,
+    workspaceId: env.APP_WORKSPACE_ID,
+    capsuleId: env.APP_CAPSULE_ID,
+    interfaceId: env.APP_MCP_INTERFACE_ID,
+    interfaceResolvedRevision: interfaceRevision,
+  });
+  if (!configured && !interfaceOAuthConfigured) {
     return Response.json(
-      { error: "PUBLISHED_MCP_AUTH_TOKEN is required" },
+      { error: "MCP bearer authentication is not configured" },
       { status: 503 },
     );
   }
   const match = /^Bearer[ \t]+(.+)$/i.exec(
     request.headers.get("authorization") ?? "",
   );
-  if (!match || !(await constantTimeEqual(match[1], configured))) {
+  const token = match?.[1]?.trim();
+  if (!token) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
-  return null;
+  if (configured && (await constantTimeEqual(token, configured))) return null;
+  if (
+    interfaceOAuthConfigured &&
+    (await verifyInterfaceOAuthBearer(request, token, "mcp.invoke", {
+      issuerUrl: env.OIDC_ISSUER_URL,
+      expectedAudience: audience,
+      expectedWorkspaceId: env.APP_WORKSPACE_ID,
+      expectedCapsuleId: env.APP_CAPSULE_ID,
+      expectedInterfaceId: env.APP_MCP_INTERFACE_ID,
+      expectedInterfaceResolvedRevision: interfaceRevision,
+      ...(interfaceUserInfoFetch ? { fetchImpl: interfaceUserInfoFetch } : {}),
+    }))
+  ) {
+    return null;
+  }
+  return Response.json({ error: "Unauthorized" }, { status: 401 });
 }
 
 async function readBoundedBody(request: Request): Promise<string | null> {
@@ -591,6 +640,10 @@ async function readBoundedBody(request: Request): Promise<string | null> {
 export async function handleMcpRoute(
   request: Request,
   env: Env,
+  interfaceUserInfoFetch?: (
+    input: RequestInfo | URL,
+    init?: RequestInit,
+  ) => Promise<Response>,
 ): Promise<Response | null> {
   const url = new URL(request.url);
   if (url.pathname !== "/mcp") return null;
@@ -611,7 +664,7 @@ export async function handleMcpRoute(
     );
   }
 
-  const denied = await authorize(request, env);
+  const denied = await authorize(request, env, interfaceUserInfoFetch);
   if (denied) return denied;
 
   const bodyText = await readBoundedBody(request);

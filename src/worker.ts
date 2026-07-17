@@ -1,24 +1,10 @@
 /**
  * takos-storage — workspace object store service.
  *
- * A plain HTTP object API over a single R2 bucket, gated by scoped bearer
- * tokens that Takosumi mints at bind time. Each token is bounded to a key
- * prefix + verb set, so a consumer app can only touch its own slice.
- *
- *   GET    /healthz          liveness (no auth)
- *   GET    /, /ui            workspace drive UI (OIDC session when enabled)
- *   /api/auth/*              OIDC login/callback/me/logout (app-auth.ts)
- *   /api/drive/*             session-authed workspace drive files (drive.ts)
- *   POST   /mcp              bearer-protected storage_file_* MCP tools
- *   PUT    /o/<key>          store an object          (verb: w)
- *   GET    /o/<key>          fetch an object          (verb: r)
- *   HEAD   /o/<key>          object metadata          (verb: r)
- *   DELETE /o/<key>          remove an object         (verb: d)
- *   GET    /o?prefix=<p>     list keys under a prefix (verb: l)
- *   POST   /api/admin/empty  explicitly empty the module-owned bucket
- *
- * S3 SigV4 compatibility is intentionally out of scope for P0 (see the repo
- * README); this surface exists to prove the bind-time scoped-token flow.
+ * Runtime object calls use invocation-only Takosumi Interface OAuth
+ * credentials. Every call is checked against one exact permission and the
+ * canonical /o resource URI; the resolved InterfaceBinding id is the physical
+ * storage namespace boundary.
  */
 
 import type { Env } from "./types.ts";
@@ -27,14 +13,21 @@ import { handleAuthRoute } from "./app-auth.ts";
 import { handleDriveRoute } from "./drive.ts";
 import { handleMcpRoute } from "./mcp.ts";
 import {
-  type StorageTokenVerb,
-  tokenAllows,
-  verifyStorageToken,
-} from "./token.ts";
+  authorizeInterfaceOAuthBearer,
+  hasValidInterfaceOAuthConfiguration,
+} from "./interface-oauth-auth.ts";
+import iconSvg from "../public/icons/takos-storage.svg" with { type: "text" };
+import {
+  boundedRequestBody,
+  conditionalWriteHeaders,
+  RequestBodyTooLargeError,
+} from "./http-body.ts";
 
 const OBJECT_PREFIX = "/o/";
-const ADMIN_EMPTY_PATH = "/api/admin/empty";
-const MAX_PURGE_PASSES = 10_000;
+const INTERFACE_BINDING_PREFIX = "interface-bindings/";
+const MAX_CURSOR_LENGTH = 4_096;
+const MAX_OBJECT_KEY_LENGTH = 1_024;
+const ICON_PATH = "/icons/takos-storage.svg";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -52,161 +45,231 @@ function html(body: string): Response {
   });
 }
 
-const VERB_BY_METHOD: Record<string, StorageTokenVerb> = {
-  GET: "r",
-  HEAD: "r",
-  PUT: "w",
-  DELETE: "d",
-};
-
-function constantTimeEqual(left: string, right: string): boolean {
-  const leftBytes = new TextEncoder().encode(left);
-  const rightBytes = new TextEncoder().encode(right);
-  const length = Math.max(leftBytes.length, rightBytes.length);
-  let difference = leftBytes.length ^ rightBytes.length;
-  for (let index = 0; index < length; index += 1) {
-    difference |= (leftBytes[index] ?? 0) ^ (rightBytes[index] ?? 0);
-  }
-  return difference === 0;
+function svgAsset(body: string): Response {
+  return new Response(body, {
+    headers: {
+      "content-type": "image/svg+xml; charset=utf-8",
+      "cache-control": "public, max-age=86400",
+    },
+  });
 }
 
-async function handleAdminEmpty(
+const OBJECT_PERMISSION_BY_METHOD: Readonly<Record<string, string>> = {
+  GET: "storage.object.read",
+  HEAD: "storage.object.read",
+  PUT: "storage.object.write",
+  DELETE: "storage.object.delete",
+};
+
+function interfaceResourceUri(env: Env, path: string): string {
+  const base = env.APP_URL?.trim();
+  if (!base) return "";
+  try {
+    return new URL(path, `${base.replace(/\/$/u, "")}/`).href;
+  } catch {
+    return "";
+  }
+}
+
+function positiveRevision(value?: string): number | undefined {
+  if (!value || !/^[1-9][0-9]*$/u.test(value)) return undefined;
+  const revision = Number(value);
+  return Number.isSafeInteger(revision) ? revision : undefined;
+}
+
+function bindingStoragePrefix(interfaceBindingId: string): string {
+  return `${INTERFACE_BINDING_PREFIX}${encodeURIComponent(interfaceBindingId)}/`;
+}
+
+function validRelativeKey(value: string): boolean {
+  return (
+    value.length > 0 &&
+    value.length <= MAX_OBJECT_KEY_LENGTH &&
+    !value.startsWith("/") &&
+    !value.includes("\0")
+  );
+}
+
+function validRelativePrefix(value: string): boolean {
+  return (
+    value.length <= MAX_OBJECT_KEY_LENGTH &&
+    !value.startsWith("/") &&
+    !value.includes("\0")
+  );
+}
+
+export type InterfaceUserInfoFetch = (
+  input: RequestInfo | URL,
+  init?: RequestInit,
+) => Promise<Response>;
+
+async function fetchHandler(
   request: Request,
   env: Env,
-): Promise<Response | null> {
+  interfaceUserInfoFetch?: InterfaceUserInfoFetch,
+): Promise<Response> {
   const url = new URL(request.url);
-  if (url.pathname !== ADMIN_EMPTY_PATH) return null;
-  if (request.method !== "POST") {
-    return json({ error: "method_not_allowed" }, 405);
+
+  if (request.method === "GET" && url.pathname === "/healthz") {
+    return json({ status: "ok", service: "takos-storage" });
   }
-  const expected = env.STORAGE_ADMIN_TOKEN ?? "";
-  const authorization = request.headers.get("authorization") ?? "";
-  const provided = /^Bearer\s+(.+)$/i.exec(authorization)?.[1] ?? "";
+  if (request.method === "GET" && url.pathname === ICON_PATH) {
+    return svgAsset(iconSvg);
+  }
   if (
-    expected.length < 32 ||
-    !constantTimeEqual(provided, expected) ||
-    request.headers.get("x-takos-storage-action") !== "empty"
+    request.method === "GET" &&
+    (url.pathname === "/" || url.pathname === "/ui")
   ) {
-    return json({ error: "not_found" }, 404);
+    return html(storageConsoleHtml());
   }
 
-  let deleted = 0;
-  for (let pass = 0; pass < MAX_PURGE_PASSES; pass += 1) {
-    const listing = await env.BUCKET.list({ limit: 1000 });
-    const keys = listing.objects.map((object) => object.key);
-    if (keys.length === 0) {
-      return json({ ok: true, deleted });
-    }
-    await env.BUCKET.delete(keys);
-    deleted += keys.length;
+  const mcpResponse = await handleMcpRoute(
+    request,
+    env,
+    interfaceUserInfoFetch,
+  );
+  if (mcpResponse) return mcpResponse;
+
+  const authResponse = await handleAuthRoute(request, env);
+  if (authResponse) return authResponse;
+  const driveResponse = await handleDriveRoute(request, env);
+  if (driveResponse) return driveResponse;
+
+  const isListPath = url.pathname === "/o" || url.pathname === "/o/";
+  const isObjectPath = url.pathname.startsWith(OBJECT_PREFIX) && !isListPath;
+  if (!isListPath && !isObjectPath) return json({ error: "not_found" }, 404);
+
+  const expectedPermission = isListPath
+    ? request.method === "GET"
+      ? "storage.object.list"
+      : null
+    : (OBJECT_PERMISSION_BY_METHOD[request.method] ?? null);
+  if (!expectedPermission) return json({ error: "method_not_allowed" }, 405);
+
+  const audience = interfaceResourceUri(env, "/o");
+  const interfaceRevision = positiveRevision(
+    env.APP_OBJECT_INTERFACE_RESOLVED_REVISION,
+  );
+  if (
+    !hasValidInterfaceOAuthConfiguration({
+      issuerUrl: env.OIDC_ISSUER_URL,
+      audience,
+      workspaceId: env.APP_WORKSPACE_ID,
+      capsuleId: env.APP_CAPSULE_ID,
+      interfaceId: env.APP_OBJECT_INTERFACE_ID,
+      interfaceResolvedRevision: interfaceRevision,
+    })
+  ) {
+    return json({ error: "interface_oauth_unconfigured" }, 503);
   }
-  return json({ error: "empty_limit_exceeded", deleted }, 500);
+
+  const bearer = /^Bearer\s+(.+)$/i.exec(
+    request.headers.get("authorization") ?? "",
+  );
+  if (!bearer) return json({ error: "missing_bearer_token" }, 401);
+  const authorization = await authorizeInterfaceOAuthBearer(
+    request,
+    bearer[1],
+    expectedPermission,
+    {
+      issuerUrl: env.OIDC_ISSUER_URL,
+      expectedAudience: audience,
+      expectedWorkspaceId: env.APP_WORKSPACE_ID,
+      expectedCapsuleId: env.APP_CAPSULE_ID,
+      expectedInterfaceId: env.APP_OBJECT_INTERFACE_ID,
+      expectedInterfaceResolvedRevision: interfaceRevision,
+      ...(interfaceUserInfoFetch ? { fetchImpl: interfaceUserInfoFetch } : {}),
+    },
+  );
+  if (!authorization) {
+    return json({ error: "invalid_interface_oauth_token" }, 401);
+  }
+  const storagePrefix = bindingStoragePrefix(authorization.interfaceBindingId);
+
+  if (isListPath) {
+    const requested = url.searchParams.get("prefix") ?? "";
+    if (!validRelativePrefix(requested)) {
+      return json({ error: "invalid_prefix" }, 400);
+    }
+    const cursor = url.searchParams.get("cursor");
+    if (
+      cursor !== null &&
+      (cursor.length === 0 || cursor.length > MAX_CURSOR_LENGTH)
+    ) {
+      return json({ error: "invalid_cursor" }, 400);
+    }
+    const listing = await env.BUCKET.list({
+      prefix: `${storagePrefix}${requested}`,
+      limit: 1000,
+      ...(cursor ? { cursor } : {}),
+    });
+    return json({
+      objects: listing.objects.map((object) => ({
+        key: object.key.slice(storagePrefix.length),
+        size: object.size,
+        uploaded: object.uploaded,
+      })),
+      truncated: listing.truncated,
+      ...(listing.truncated && listing.cursor
+        ? { cursor: listing.cursor }
+        : {}),
+    });
+  }
+
+  let key: string;
+  try {
+    key = decodeURIComponent(url.pathname.slice(OBJECT_PREFIX.length));
+  } catch {
+    return json({ error: "invalid_key" }, 400);
+  }
+  if (!validRelativeKey(key)) return json({ error: "invalid_key" }, 400);
+  const physicalKey = `${storagePrefix}${key}`;
+
+  if (expectedPermission === "storage.object.read") {
+    const object = await env.BUCKET.get(physicalKey);
+    if (!object) return json({ error: "not_found" }, 404);
+    const headers = new Headers({
+      "content-type":
+        object.httpMetadata?.contentType ?? "application/octet-stream",
+    });
+    if (object.httpEtag) headers.set("etag", object.httpEtag);
+    if (request.method === "HEAD") {
+      return new Response(null, { status: 200, headers });
+    }
+    return new Response(object.body, { status: 200, headers });
+  }
+
+  if (expectedPermission === "storage.object.write") {
+    const contentType =
+      request.headers.get("content-type") ?? "application/octet-stream";
+    const body = boundedRequestBody(request);
+    if (!body.ok) return json({ error: body.error }, body.status);
+    const onlyIf = conditionalWriteHeaders(request);
+    try {
+      const object = await env.BUCKET.put(physicalKey, body.body, {
+        httpMetadata: { contentType },
+        ...(onlyIf ? { onlyIf } : {}),
+      });
+      if (!object) return json({ error: "precondition_failed" }, 412);
+      return json({ ok: true, key }, 201);
+    } catch (error) {
+      if (error instanceof RequestBodyTooLargeError) {
+        return json({ error: "object_too_large" }, 413);
+      }
+      throw error;
+    }
+  }
+
+  await env.BUCKET.delete(physicalKey);
+  return json({ ok: true, key });
 }
 
-export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
-    const url = new URL(request.url);
+export function createStorageWorker(
+  interfaceUserInfoFetch?: InterfaceUserInfoFetch,
+): { fetch(request: Request, env: Env): Promise<Response> } {
+  return {
+    fetch: (request, env) => fetchHandler(request, env, interfaceUserInfoFetch),
+  };
+}
 
-    if (request.method === "GET" && url.pathname === "/healthz") {
-      return json({ status: "ok", service: "takos-storage" });
-    }
-    const adminResponse = await handleAdminEmpty(request, env);
-    if (adminResponse) return adminResponse;
-    if (
-      request.method === "GET" &&
-      (url.pathname === "/" || url.pathname === "/ui")
-    ) {
-      return html(storageConsoleHtml());
-    }
-
-    const mcpResponse = await handleMcpRoute(request, env);
-    if (mcpResponse) return mcpResponse;
-
-    // ---- Workspace drive (user session) ----
-    const authResponse = await handleAuthRoute(request, env);
-    if (authResponse) return authResponse;
-    const driveResponse = await handleDriveRoute(request, env);
-    if (driveResponse) return driveResponse;
-
-    const isListPath = url.pathname === "/o" || url.pathname === "/o/";
-    const isObjectPath = url.pathname.startsWith(OBJECT_PREFIX) && !isListPath;
-    if (!isListPath && !isObjectPath) return json({ error: "not_found" }, 404);
-
-    // --- authenticate ---
-    const authHeader = request.headers.get("authorization") ?? "";
-    const bearer = /^Bearer\s+(.+)$/i.exec(authHeader);
-    if (!bearer) return json({ error: "missing_bearer_token" }, 401);
-    if (!env.STORAGE_TOKEN_SIGNING_KEY) {
-      return json({ error: "storage_signing_key_unconfigured" }, 503);
-    }
-    const verified = await verifyStorageToken(
-      env.STORAGE_TOKEN_SIGNING_KEY,
-      bearer[1],
-    );
-    if (!verified.ok)
-      return json({ error: "invalid_token", reason: verified.reason }, 401);
-    const { payload } = verified;
-
-    // --- list ---
-    if (isListPath) {
-      if (request.method !== "GET")
-        return json({ error: "method_not_allowed" }, 405);
-      if (!payload.cap.includes("l"))
-        return json({ error: "forbidden", verb: "l" }, 403);
-      const requested = url.searchParams.get("prefix") ?? "";
-      if (payload.pfx && !requested.startsWith(payload.pfx)) {
-        return json({ error: "forbidden_prefix", allowed: payload.pfx }, 403);
-      }
-      const listing = await env.BUCKET.list({
-        prefix: requested || payload.pfx,
-        limit: 1000,
-      });
-      return json({
-        objects: listing.objects.map((object) => ({
-          key: object.key,
-          size: object.size,
-          uploaded: object.uploaded,
-        })),
-        truncated: listing.truncated,
-      });
-    }
-
-    // --- object ops ---
-    let key: string;
-    try {
-      key = decodeURIComponent(url.pathname.slice(OBJECT_PREFIX.length));
-    } catch {
-      return json({ error: "invalid_key" }, 400);
-    }
-    if (!key) return json({ error: "empty_key" }, 400);
-
-    const verb = VERB_BY_METHOD[request.method];
-    if (!verb) return json({ error: "method_not_allowed" }, 405);
-    if (!tokenAllows(payload, verb, key))
-      return json({ error: "forbidden", verb, key }, 403);
-
-    if (verb === "r") {
-      const object = await env.BUCKET.get(key);
-      if (!object) return json({ error: "not_found" }, 404);
-      const headers = new Headers({
-        "content-type":
-          object.httpMetadata?.contentType ?? "application/octet-stream",
-      });
-      if (object.httpEtag) headers.set("etag", object.httpEtag);
-      if (request.method === "HEAD")
-        return new Response(null, { status: 200, headers });
-      return new Response(object.body, { status: 200, headers });
-    }
-
-    if (verb === "w") {
-      const contentType =
-        request.headers.get("content-type") ?? "application/octet-stream";
-      const data = await request.arrayBuffer();
-      await env.BUCKET.put(key, data, { httpMetadata: { contentType } });
-      return json({ ok: true, key }, 201);
-    }
-
-    await env.BUCKET.delete(key);
-    return json({ ok: true, key });
-  },
-};
+export default createStorageWorker();

@@ -5,11 +5,11 @@
  * Accounts authorization-code + PKCE, HMAC-sealed cookies) for a plain
  * fetch-handler Worker. Auth is OFF unless APP_AUTH_REQUIRED is set, so a
  * bare self-host apply stays usable; when on, the drive UI and /api/drive
- * routes require a signed session cookie, and — when APP_SPACE_ID is set —
+ * routes require a signed session cookie, and — when APP_WORKSPACE_ID is set —
  * membership of that workspace.
  *
- * The `/o` object API is NOT covered here: apps keep using bind-time
- * `tksvc_` scoped credentials (src/token.ts).
+ * The `/o` object API is NOT covered here: runtime consumers use Interface
+ * OAuth credentials independently of browser sessions.
  */
 
 import type { Env } from "./types.ts";
@@ -22,7 +22,7 @@ const STATE_MAX_AGE_SECONDS = 10 * 60;
 export interface AppSession {
   sub: string;
   name?: string;
-  spaceIds: string[];
+  workspaceIds: string[];
   exp: number;
 }
 
@@ -50,7 +50,7 @@ function authConfig(env: Env) {
     clientId: envValue(env, "OIDC_CLIENT_ID"),
     clientSecret: envValue(env, "OIDC_CLIENT_SECRET"),
     sessionSecret: envValue(env, "APP_SESSION_SECRET"),
-    spaceId: envValue(env, "APP_SPACE_ID"),
+    workspaceId: envValue(env, "APP_WORKSPACE_ID"),
   };
 }
 
@@ -254,7 +254,7 @@ async function exchangeCode(
   return payload.access_token;
 }
 
-function normalizeSpaceIds(value: unknown): string[] {
+function normalizeWorkspaceIds(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
   for (const entry of value) {
@@ -262,7 +262,7 @@ function normalizeSpaceIds(value: unknown): string[] {
       seen.add(entry);
     } else if (entry && typeof entry === "object") {
       const record = entry as Record<string, unknown>;
-      const candidate = record.space_id ?? record.spaceId ?? record.id;
+      const candidate = record.workspace_id;
       if (typeof candidate === "string" && candidate.trim() !== "") {
         seen.add(candidate);
       }
@@ -282,26 +282,21 @@ async function fetchUserInfo(env: Env, accessToken: string) {
     user?: { id?: string; name?: string };
     sub?: string;
     name?: string;
-    space_memberships?: unknown;
-    spaceMemberships?: unknown;
-    takosumi?: { space_id?: unknown };
+    workspace_memberships?: unknown;
+    takosumi?: { workspace_id?: unknown };
   };
   const sub = body.user?.id ?? body.sub;
   if (!sub) throw new Error("OAuth userinfo response missing subject");
-  const spaceIds = normalizeSpaceIds(
-    body.space_memberships ?? body.spaceMemberships,
-  );
-  // Takosumi Accounts userinfo historically emits only the nested
-  // `takosumi.space_id`; fold it in so membership checks keep working.
-  const nestedSpaceId = body.takosumi?.space_id;
+  const workspaceIds = normalizeWorkspaceIds(body.workspace_memberships);
+  const nestedWorkspaceId = body.takosumi?.workspace_id;
   if (
-    typeof nestedSpaceId === "string" &&
-    nestedSpaceId.trim() !== "" &&
-    !spaceIds.includes(nestedSpaceId)
+    typeof nestedWorkspaceId === "string" &&
+    nestedWorkspaceId.trim() !== "" &&
+    !workspaceIds.includes(nestedWorkspaceId)
   ) {
-    spaceIds.push(nestedSpaceId);
+    workspaceIds.push(nestedWorkspaceId);
   }
-  return { sub, name: body.user?.name ?? body.name, spaceIds };
+  return { sub, name: body.user?.name ?? body.name, workspaceIds };
 }
 
 // ---- Guard + session lookup --------------------------------------------------
@@ -343,11 +338,13 @@ export async function requireAppAuth(
   const session = await getAppSession(env, request);
   if (!session)
     return Response.json({ error: "unauthorized" }, { status: 401 });
-  if (config.spaceId) {
-    const memberships = Array.isArray(session.spaceIds) ? session.spaceIds : [];
-    if (!memberships.includes(config.spaceId)) {
+  if (config.workspaceId) {
+    const memberships = Array.isArray(session.workspaceIds)
+      ? session.workspaceIds
+      : [];
+    if (!memberships.includes(config.workspaceId)) {
       return Response.json(
-        { error: "space_membership_required" },
+        { error: "workspace_membership_required" },
         { status: 403 },
       );
     }
@@ -372,9 +369,12 @@ export async function handleAuthRoute(
     const session = await getAppSession(env, request);
     if (!session)
       return Response.json({ error: "unauthorized" }, { status: 401 });
-    if (config.spaceId && !session.spaceIds?.includes(config.spaceId)) {
+    if (
+      config.workspaceId &&
+      !session.workspaceIds?.includes(config.workspaceId)
+    ) {
       return Response.json(
-        { error: "space_membership_required" },
+        { error: "workspace_membership_required" },
         { status: 403 },
       );
     }
@@ -466,7 +466,7 @@ export async function handleAuthRoute(
       {
         sub: user.sub,
         name: user.name,
-        spaceIds: user.spaceIds,
+        workspaceIds: user.workspaceIds,
         exp: Math.floor(Date.now() / 1000) + SESSION_MAX_AGE_SECONDS,
       } satisfies AppSession,
       config.sessionSecret!,

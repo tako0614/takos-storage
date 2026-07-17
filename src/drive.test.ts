@@ -11,7 +11,6 @@ import type {
   R2PutOptions,
 } from "./types.ts";
 
-const SIGNING_SECRET = "drive-test-signing-key-abcdef";
 const SESSION_SECRET = "drive-test-session-secret";
 
 class MemoryBucket implements R2Bucket {
@@ -68,7 +67,7 @@ class MemoryBucket implements R2Bucket {
 }
 
 function makeEnv(bucket: R2Bucket, over: Partial<Env> = {}): Env {
-  return { BUCKET: bucket, STORAGE_TOKEN_SIGNING_KEY: SIGNING_SECRET, ...over };
+  return { BUCKET: bucket, ...over };
 }
 
 const AUTH_ENV: Partial<Env> = {
@@ -82,7 +81,7 @@ async function sessionCookie(over: Partial<AppSession> = {}): Promise<string> {
   const session: AppSession = {
     sub: "user-1",
     name: "Taro",
-    spaceIds: ["space-1"],
+    workspaceIds: ["workspace-1"],
     exp: Math.floor(Date.now() / 1000) + 3600,
     ...over,
   };
@@ -214,7 +213,7 @@ describe("workspace drive API", () => {
     const stateSealed = await seal(
       {
         sub: "user-1",
-        spaceIds: ["space-1"],
+        workspaceIds: ["workspace-1"],
         exp: Math.floor(Date.now() / 1000) + 3600,
       },
       SESSION_SECRET,
@@ -229,10 +228,10 @@ describe("workspace drive API", () => {
     expect(res.status).toBe(401);
   });
 
-  test("APP_SPACE_ID enforces workspace membership", async () => {
+  test("APP_WORKSPACE_ID enforces workspace membership", async () => {
     const env = makeEnv(new MemoryBucket(), {
       ...AUTH_ENV,
-      APP_SPACE_ID: "space-9",
+      APP_WORKSPACE_ID: "workspace-9",
     });
     const outsider = await worker.fetch(
       request("GET", "/api/drive/list", { cookie: await sessionCookie() }),
@@ -242,7 +241,9 @@ describe("workspace drive API", () => {
 
     const member = await worker.fetch(
       request("GET", "/api/drive/list", {
-        cookie: await sessionCookie({ spaceIds: ["space-1", "space-9"] }),
+        cookie: await sessionCookie({
+          workspaceIds: ["workspace-1", "workspace-9"],
+        }),
       }),
       env,
     );

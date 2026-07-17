@@ -1,0 +1,7 @@
+dist/
+.terraform/
+*.tf
+*.tfvars
+*.lock.hcl
+bun.lock
+LICENSE
