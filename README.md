@@ -87,9 +87,9 @@ TAKOS_STORAGE_INTERFACE_BINDING_ID=... \
 bun run storage:migrate-binding-prefix
 ```
 
-R2 bucket は non-empty のまま destroy できないため、destroy 前に provider credential と確認済みの `object_bucket_name` / `cloudflare_account_id` を使って purge します。公開 admin endpoint は使いません。Takosumi lifecycle runner は検証済み non-secret provider configuration を canonical `takosumi.provider-configurations@v1` envelope (`TAKOSUMI_PROVIDER_CONFIGS_JSON`) で渡し、managed mode はその default Cloudflare provider の `base_url` と provider が返した一時 cleaner origin だけを使います。
+R2 bucket は non-empty のまま destroy できないため、destroy 前に provider credential と確認済みの `object_bucket_name` / `cloudflare_account_id` を使って purge します。公開 admin endpoint は使いません。Takosumi lifecycle runner は解決した全 binding の検証済み non-secret provider configuration を canonical `takosumi.provider-configurations@v1` envelope (`TAKOSUMI_PROVIDER_CONFIGS_JSON`) で渡します。default Cloudflare entry の `configuration: {}` または公式 `base_url` は Cloudflare の default API + workers.dev invocation を使い、custom `base_url` は provider が返した一時 cleaner origin を使います。`base_url` は API 実行方法だけを選び、managed capacity・billing・credential authority を意味しません。envelope または default Cloudflare entry が無ければ lifecycle cleanup は fail closed です。
 
-direct/self-host invocation は managed provider configuration と混ぜず、`TAKOS_STORAGE_CLOUDFLARE_API_MODE=direct` を明示します。
+direct/self-host invocation は Takosumi lifecycle envelope と混ぜず、`TAKOS_STORAGE_CLOUDFLARE_API_MODE=direct` を明示します。
 
 ```sh
 TAKOSUMI_OUTPUTS_JSON="$(tofu output -json)" \
