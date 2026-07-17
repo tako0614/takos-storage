@@ -26,8 +26,6 @@ function verify(
     requestUrl?: string;
     workspaceId?: string;
     capsuleId?: string;
-    interfaceId?: string;
-    interfaceResolvedRevision?: number;
     status?: number;
   } = {},
 ): Promise<boolean> {
@@ -42,9 +40,6 @@ function verify(
       expectedAudience: "https://storage.example/o",
       expectedWorkspaceId: overrides.workspaceId ?? "workspace_a",
       expectedCapsuleId: overrides.capsuleId ?? "capsule_storage",
-      expectedInterfaceId: overrides.interfaceId ?? "interface_storage_object",
-      expectedInterfaceResolvedRevision:
-        overrides.interfaceResolvedRevision ?? 4,
       fetchImpl: async (input, init) => {
         expect(String(input)).toBe("https://accounts.example/oauth/userinfo");
         expect(init?.redirect).toBe("manual");
@@ -55,7 +50,7 @@ function verify(
 }
 
 describe("Interface OAuth verifier", () => {
-  test("accepts exact audience, permission, owner, Binding, and revision", async () => {
+  test("accepts active UserInfo authority with complete Interface evidence", async () => {
     expect(await verify(validClaims)).toBe(true);
   });
 
@@ -70,6 +65,18 @@ describe("Interface OAuth verifier", () => {
       await verify({
         ...validClaims,
         scope: "storage.object.read storage.object.write",
+      }),
+    ).toBe(false);
+    expect(await verify({ ...validClaims, sub: " principal_storage" })).toBe(
+      false,
+    );
+    expect(
+      await verify({
+        ...validClaims,
+        takosumi: {
+          ...validClaims.takosumi,
+          interface_id: undefined,
+        },
       }),
     ).toBe(false);
     expect(
@@ -92,10 +99,18 @@ describe("Interface OAuth verifier", () => {
     ).toBe(false);
   });
 
-  test("rejects a stale InterfaceBinding observation of the Interface revision", async () => {
-    expect(await verify(validClaims, { interfaceResolvedRevision: 5 })).toBe(
-      false,
-    );
+  test("does not pre-pin current Interface evidence in target configuration", async () => {
+    expect(
+      await verify({
+        ...validClaims,
+        takosumi: {
+          ...validClaims.takosumi,
+          interface_id: "interface_storage_reconciled",
+          interface_binding_id: "binding_reconciled",
+          interface_resolved_revision: 5,
+        },
+      }),
+    ).toBe(true);
   });
 
   test("rejects non-Interface tokens, unrelated resources, and non-200 UserInfo", async () => {

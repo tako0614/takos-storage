@@ -569,18 +569,11 @@ async function authorize(
   } catch {
     // Invalid configuration remains fail closed.
   }
-  const rawRevision = env.APP_MCP_INTERFACE_RESOLVED_REVISION;
-  const interfaceRevision =
-    rawRevision && /^[1-9][0-9]*$/u.test(rawRevision)
-      ? Number(rawRevision)
-      : undefined;
   const interfaceOAuthConfigured = hasValidInterfaceOAuthConfiguration({
     issuerUrl: env.OIDC_ISSUER_URL,
     audience,
     workspaceId: env.APP_WORKSPACE_ID,
     capsuleId: env.APP_CAPSULE_ID,
-    interfaceId: env.APP_MCP_INTERFACE_ID,
-    interfaceResolvedRevision: interfaceRevision,
   });
   if (!configured && !interfaceOAuthConfigured) {
     return Response.json(
@@ -603,8 +596,6 @@ async function authorize(
       expectedAudience: audience,
       expectedWorkspaceId: env.APP_WORKSPACE_ID,
       expectedCapsuleId: env.APP_CAPSULE_ID,
-      expectedInterfaceId: env.APP_MCP_INTERFACE_ID,
-      expectedInterfaceResolvedRevision: interfaceRevision,
       ...(interfaceUserInfoFetch ? { fetchImpl: interfaceUserInfoFetch } : {}),
     }))
   ) {

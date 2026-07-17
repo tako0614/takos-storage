@@ -101,10 +101,6 @@ variable "env" {
         "APP_AUTH_REQUIRED",
         "APP_WORKSPACE_ID",
         "APP_CAPSULE_ID",
-        "APP_OBJECT_INTERFACE_ID",
-        "APP_OBJECT_INTERFACE_RESOLVED_REVISION",
-        "APP_MCP_INTERFACE_ID",
-        "APP_MCP_INTERFACE_RESOLVED_REVISION",
       ], name)
     ])
     error_message = "env keys must be uppercase Worker plain-text variable names and must not be secret-like or reserved by the takos-storage module."
@@ -157,40 +153,6 @@ variable "takosumi_capsule_id" {
   description = "Owning Takosumi Capsule id used to verify Interface OAuth evidence."
   type        = string
   default     = ""
-}
-
-variable "takosumi_object_interface_id" {
-  description = "Exact service-side object Interface id expected in Interface OAuth evidence."
-  type        = string
-  default     = ""
-}
-
-variable "takosumi_object_interface_resolved_revision" {
-  description = "Current resolved revision of the service-side object Interface. Stale credentials are rejected."
-  type        = number
-  default     = 0
-
-  validation {
-    condition     = var.takosumi_object_interface_resolved_revision >= 0 && floor(var.takosumi_object_interface_resolved_revision) == var.takosumi_object_interface_resolved_revision
-    error_message = "takosumi_object_interface_resolved_revision must be a non-negative integer."
-  }
-}
-
-variable "takosumi_mcp_interface_id" {
-  description = "Exact service-side MCP Interface id expected in Interface OAuth evidence."
-  type        = string
-  default     = ""
-}
-
-variable "takosumi_mcp_interface_resolved_revision" {
-  description = "Current resolved revision of the service-side MCP Interface. Stale credentials are rejected."
-  type        = number
-  default     = 0
-
-  validation {
-    condition     = var.takosumi_mcp_interface_resolved_revision >= 0 && floor(var.takosumi_mcp_interface_resolved_revision) == var.takosumi_mcp_interface_resolved_revision
-    error_message = "takosumi_mcp_interface_resolved_revision must be a non-negative integer."
-  }
 }
 
 variable "cloudflare_workers_subdomain" {
@@ -318,17 +280,13 @@ locals {
   provided_mcp_token = trimspace(var.published_mcp_auth_token)
   extra_worker_env   = { for name, value in var.env : name => value if trimspace(value) != "" }
 
-  accounts_issuer_url       = trimsuffix(trimspace(var.takosumi_accounts_issuer_url), "/")
-  app_auth_enabled          = local.accounts_issuer_url != "" && trimspace(var.takosumi_accounts_client_id) != ""
-  provided_session_secret   = trimspace(var.app_session_secret)
-  workspace_id              = trimspace(var.takosumi_workspace_id)
-  capsule_id                = trimspace(var.takosumi_capsule_id)
-  interface_owner_enabled   = local.workspace_id != "" && local.capsule_id != ""
-  object_interface_id       = trimspace(var.takosumi_object_interface_id)
-  object_interface_revision = var.takosumi_object_interface_resolved_revision
-  mcp_interface_id          = trimspace(var.takosumi_mcp_interface_id)
-  mcp_interface_revision    = var.takosumi_mcp_interface_resolved_revision
-  oidc_redirect_uri         = local.launch_url != null ? "${local.launch_url}/api/auth/callback/takos" : null
+  accounts_issuer_url     = trimsuffix(trimspace(var.takosumi_accounts_issuer_url), "/")
+  app_auth_enabled        = local.accounts_issuer_url != "" && trimspace(var.takosumi_accounts_client_id) != ""
+  provided_session_secret = trimspace(var.app_session_secret)
+  workspace_id            = trimspace(var.takosumi_workspace_id)
+  capsule_id              = trimspace(var.takosumi_capsule_id)
+  interface_owner_enabled = local.workspace_id != "" && local.capsule_id != ""
+  oidc_redirect_uri       = local.launch_url != null ? "${local.launch_url}/api/auth/callback/takos" : null
 
   r2_objects_bucket = "${local.resource_prefix}-objects"
 }
@@ -421,30 +379,6 @@ resource "cloudflare_workers_script" "worker" {
         text = local.capsule_id
       },
     ] : [],
-    local.object_interface_id != "" && local.object_interface_revision > 0 ? [
-      {
-        type = "plain_text"
-        name = "APP_OBJECT_INTERFACE_ID"
-        text = local.object_interface_id
-      },
-      {
-        type = "plain_text"
-        name = "APP_OBJECT_INTERFACE_RESOLVED_REVISION"
-        text = tostring(local.object_interface_revision)
-      },
-    ] : [],
-    local.mcp_interface_id != "" && local.mcp_interface_revision > 0 ? [
-      {
-        type = "plain_text"
-        name = "APP_MCP_INTERFACE_ID"
-        text = local.mcp_interface_id
-      },
-      {
-        type = "plain_text"
-        name = "APP_MCP_INTERFACE_RESOLVED_REVISION"
-        text = tostring(local.mcp_interface_revision)
-      },
-    ] : [],
     local.app_auth_enabled ? [
       {
         type = "plain_text"
@@ -483,13 +417,9 @@ resource "cloudflare_workers_script" "worker" {
       condition = !local.cloudflare_worker_enabled || (
         local.launch_url != null &&
         local.accounts_issuer_url != "" &&
-        local.interface_owner_enabled &&
-        local.object_interface_id != "" &&
-        local.object_interface_revision > 0 &&
-        local.mcp_interface_id != "" &&
-        local.mcp_interface_revision > 0
+        local.interface_owner_enabled
       )
-      error_message = "A deployed Worker requires a public URL, Accounts issuer, owning Workspace/Capsule, and exact object/MCP Interface ids and resolved revisions."
+      error_message = "A deployed Worker requires a public URL, Accounts issuer, and owning Workspace/Capsule. Current Interface evidence is revalidated by Accounts UserInfo at invocation time."
     }
 
     precondition {

@@ -177,8 +177,6 @@ describe("published storage MCP", () => {
         OIDC_ISSUER_URL: "https://accounts.example",
         APP_WORKSPACE_ID: "workspace_a",
         APP_CAPSULE_ID: "capsule_storage",
-        APP_MCP_INTERFACE_ID: "interface_storage_mcp",
-        APP_MCP_INTERFACE_RESOLVED_REVISION: "6",
       },
     );
     expect(response.status).toBe(200);
