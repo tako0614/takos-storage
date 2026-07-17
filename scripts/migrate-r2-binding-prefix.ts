@@ -133,9 +133,12 @@ export default {async fetch(request,env){
  const cursor=typeof input.cursor==="string"&&input.cursor.length<=4096?input.cursor:undefined;
  const page=await env.BUCKET.list({prefix:LEGACY_PREFIX,limit:50,cursor,include:["httpMetadata","customMetadata"]});
  for(const listed of page.objects){
+  if(typeof listed.key!=="string"||!listed.key.startsWith(LEGACY_PREFIX)||listed.key.length<=LEGACY_PREFIX.length){
+   return Response.json({ok:false,error:"invalid_source_key"},{status:409});
+  }
   const source=await env.BUCKET.get(listed.key);
   if(!source)continue;
-  const targetKey=TARGET_PREFIX+listed.key;
+  const targetKey=TARGET_PREFIX+listed.key.slice(LEGACY_PREFIX.length);
   const target=await env.BUCKET.head(targetKey);
   if(target){
    if(target.size!==source.size||target.customMetadata?.[MARKER]!==source.httpEtag){
