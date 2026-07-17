@@ -60,13 +60,13 @@ variable "public_subdomain" {
 }
 
 variable "public_url" {
-  description = "Canonical public URL for the storage service. When empty, launch_url is derived from public_subdomain and cloudflare_workers_subdomain."
+  description = "Canonical HTTPS origin for the storage service (an optional trailing slash is removed). When empty, launch_url is derived from public_subdomain and cloudflare_workers_subdomain."
   type        = string
   default     = ""
 
   validation {
-    condition     = trimspace(var.public_url) == "" || can(regex("^https://[^[:space:]]+$", var.public_url))
-    error_message = "public_url must be empty or an https URL."
+    condition     = trimspace(var.public_url) == "" || can(regex("^https://([A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?|\\[[0-9A-Fa-f:]+\\])(:[0-9]{1,5})?/?$", trimspace(var.public_url)))
+    error_message = "public_url must be empty or a bare HTTPS origin with no userinfo, path, query, or fragment."
   }
 }
 
@@ -112,13 +112,13 @@ variable "env" {
 }
 
 variable "takosumi_accounts_issuer_url" {
-  description = "Optional Takosumi Accounts issuer. Interface OAuth validates runtime calls against its UserInfo endpoint; together with a client id it also enables drive sign-in."
+  description = "Optional bare HTTPS Takosumi Accounts issuer origin (an optional trailing slash is removed). Interface OAuth validates runtime calls against its UserInfo endpoint; together with a client id it also enables drive sign-in."
   type        = string
   default     = ""
 
   validation {
-    condition     = trimspace(var.takosumi_accounts_issuer_url) == "" || can(regex("^https://[^[:space:]]+$", trimspace(var.takosumi_accounts_issuer_url)))
-    error_message = "takosumi_accounts_issuer_url must be empty or an https URL."
+    condition     = trimspace(var.takosumi_accounts_issuer_url) == "" || can(regex("^https://([A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?|\\[[0-9A-Fa-f:]+\\])(:[0-9]{1,5})?/?$", trimspace(var.takosumi_accounts_issuer_url)))
+    error_message = "takosumi_accounts_issuer_url must be empty or a bare HTTPS origin with no userinfo, path, query, or fragment."
   }
 }
 
@@ -310,14 +310,15 @@ locals {
   public_subdomain = trimspace(var.public_subdomain) != "" ? trimspace(var.public_subdomain) : local.resource_prefix
   runtime_name     = local.public_subdomain
   workers_dev_url  = trimspace(var.cloudflare_workers_subdomain) != "" ? "https://${local.public_subdomain}.${trimspace(var.cloudflare_workers_subdomain)}.workers.dev" : null
-  launch_url       = trimspace(var.public_url) != "" ? trimspace(var.public_url) : local.workers_dev_url
+  public_origin    = trimsuffix(trimspace(var.public_url), "/")
+  launch_url       = local.public_origin != "" ? local.public_origin : local.workers_dev_url
   api_base_url     = local.launch_url != null ? "${local.launch_url}/o" : null
   mcp_url          = local.launch_url != null ? "${local.launch_url}/mcp" : null
 
   provided_mcp_token = trimspace(var.published_mcp_auth_token)
   extra_worker_env   = { for name, value in var.env : name => value if trimspace(value) != "" }
 
-  accounts_issuer_url       = trimspace(var.takosumi_accounts_issuer_url)
+  accounts_issuer_url       = trimsuffix(trimspace(var.takosumi_accounts_issuer_url), "/")
   app_auth_enabled          = local.accounts_issuer_url != "" && trimspace(var.takosumi_accounts_client_id) != ""
   provided_session_secret   = trimspace(var.app_session_secret)
   workspace_id              = trimspace(var.takosumi_workspace_id)
