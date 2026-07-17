@@ -170,7 +170,56 @@ describe("storage R2 pre-destroy", () => {
     expect(removed).toBe(true);
   });
 
-  test("uses the canonical managed provider envelope and provider-returned origin", async () => {
+  test("uses empty or official default provider configuration as direct Cloudflare", async () => {
+    for (const configuration of [
+      {},
+      { base_url: "https://api.cloudflare.com/client/v4/" },
+    ]) {
+      const urls: string[] = [];
+      const fetchImpl: PurgeFetch = async (input, init) => {
+        const url = input instanceof Request ? input.url : input.toString();
+        urls.push(url);
+        const method = init?.method ?? "GET";
+        if (url.endsWith("/workers/subdomain") && method === "GET") {
+          return api({ result: { subdomain: "fixture-account" } });
+        }
+        if (method === "PUT" || url.endsWith("/subdomain")) return api();
+        if (url.endsWith(".workers.dev/purge") && method === "POST") {
+          return Response.json({ ok: true, deleted: 0, done: true });
+        }
+        if (method === "DELETE") return api();
+        return new Response("unexpected", { status: 500 });
+      };
+
+      const result = await purgeR2BucketBeforeDestroy(
+        {
+          CLOUDFLARE_API_TOKEN: "provider-token",
+          CLOUDFLARE_ACCOUNT_ID: "account-a",
+          TAKOS_STORAGE_R2_BUCKET_NAME: "bucket-a",
+          TAKOSUMI_PROVIDER_CONFIGS_JSON: JSON.stringify({
+            format: "takosumi.provider-configurations@v1",
+            providers: [
+              {
+                provider: "registry.opentofu.org/cloudflare/cloudflare",
+                alias: null,
+                configuration,
+              },
+            ],
+          }),
+        },
+        fetchImpl,
+        async () => undefined,
+      );
+
+      expect(result.status).toBe("succeeded");
+      expect(urls).toContain(
+        "https://api.cloudflare.com/client/v4/accounts/account-a/workers/subdomain",
+      );
+      expect(urls.some((url) => url.endsWith(".workers.dev/purge"))).toBe(true);
+    }
+  });
+
+  test("uses a custom provider API and its returned invocation origin", async () => {
     const urls: string[] = [];
     const fetchImpl: PurgeFetch = async (input, init) => {
       const url = input instanceof Request ? input.url : input.toString();
@@ -231,7 +280,7 @@ describe("storage R2 pre-destroy", () => {
     expect(urls.some((url) => url.includes("api.cloudflare.com"))).toBe(false);
   });
 
-  test("rejects missing managed provider base before any provider call", async () => {
+  test("rejects a missing provider envelope before any provider call", async () => {
     let called = false;
     await expect(
       purgeR2BucketBeforeDestroy(
@@ -245,7 +294,64 @@ describe("storage R2 pre-destroy", () => {
           return api();
         },
       ),
-    ).rejects.toThrow("Cloudflare API base is unresolved");
+    ).rejects.toThrow("TAKOSUMI_PROVIDER_CONFIGS_JSON is required");
+    expect(called).toBe(false);
+  });
+
+  test("rejects an envelope without the default Cloudflare entry", async () => {
+    let called = false;
+    await expect(
+      purgeR2BucketBeforeDestroy(
+        {
+          CLOUDFLARE_API_TOKEN: "provider-token",
+          CLOUDFLARE_ACCOUNT_ID: "account-a",
+          TAKOS_STORAGE_R2_BUCKET_NAME: "bucket-a",
+          TAKOSUMI_PROVIDER_CONFIGS_JSON: JSON.stringify({
+            format: "takosumi.provider-configurations@v1",
+            providers: [
+              {
+                provider: "registry.opentofu.org/cloudflare/cloudflare",
+                alias: "secondary",
+                configuration: {},
+              },
+            ],
+          }),
+        },
+        async () => {
+          called = true;
+          return api();
+        },
+      ),
+    ).rejects.toThrow("must contain the default Cloudflare provider entry");
+    expect(called).toBe(false);
+  });
+
+  test("does not mix an explicit direct invocation with a provider envelope", async () => {
+    let called = false;
+    await expect(
+      purgeR2BucketBeforeDestroy(
+        {
+          CLOUDFLARE_API_TOKEN: "provider-token",
+          CLOUDFLARE_ACCOUNT_ID: "account-a",
+          TAKOS_STORAGE_R2_BUCKET_NAME: "bucket-a",
+          TAKOS_STORAGE_CLOUDFLARE_API_MODE: "direct",
+          TAKOSUMI_PROVIDER_CONFIGS_JSON: JSON.stringify({
+            format: "takosumi.provider-configurations@v1",
+            providers: [
+              {
+                provider: "registry.opentofu.org/cloudflare/cloudflare",
+                alias: null,
+                configuration: {},
+              },
+            ],
+          }),
+        },
+        async () => {
+          called = true;
+          return api();
+        },
+      ),
+    ).rejects.toThrow("direct Cloudflare mode must not consume");
     expect(called).toBe(false);
   });
 
@@ -300,7 +406,7 @@ describe("storage R2 pre-destroy", () => {
     expect(called).toBe(false);
   });
 
-  test("managed mode removes the cleaner when no invocation origin is returned", async () => {
+  test("custom provider mode removes the cleaner when no invocation origin is returned", async () => {
     let removed = false;
     const fetchImpl: PurgeFetch = async (_input, init) => {
       if (init?.method === "DELETE") removed = true;

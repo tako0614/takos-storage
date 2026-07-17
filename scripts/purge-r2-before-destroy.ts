@@ -104,9 +104,16 @@ function httpsApiBase(value: string, name: string): string {
   return url.href.replace(/\/+$/u, "");
 }
 
-function providerApiBase(env: PurgeR2Environment): string | undefined {
+function providerExecutionContext(env: PurgeR2Environment): {
+  readonly apiBase: string;
+  readonly directCloudflare: boolean;
+} {
   const raw = env.TAKOSUMI_PROVIDER_CONFIGS_JSON?.trim();
-  if (!raw) return undefined;
+  if (!raw) {
+    throw new Error(
+      "TAKOSUMI_PROVIDER_CONFIGS_JSON is required unless direct mode is explicitly selected",
+    );
+  }
   let configs: unknown;
   try {
     configs = JSON.parse(raw);
@@ -143,7 +150,11 @@ function providerApiBase(env: PurgeR2Environment): string | undefined {
     );
   }
   const entry = entries[0];
-  if (entry === undefined) return undefined;
+  if (entry === undefined) {
+    throw new Error(
+      "TAKOSUMI_PROVIDER_CONFIGS_JSON must contain the default Cloudflare provider entry",
+    );
+  }
   const configuration = entry.configuration;
   if (!isRecord(configuration)) {
     throw new Error("Cloudflare provider configuration must be an object");
@@ -154,8 +165,21 @@ function providerApiBase(env: PurgeR2Environment): string | undefined {
     );
   }
   const baseUrl = configuration.base_url;
-  if (typeof baseUrl !== "string" || !baseUrl.trim()) return undefined;
-  return httpsApiBase(baseUrl, "Cloudflare provider base_url");
+  if (baseUrl === undefined) {
+    return { apiBase: DEFAULT_API_BASE_URL, directCloudflare: true };
+  }
+  if (typeof baseUrl !== "string" || !baseUrl.trim()) {
+    throw new Error(
+      "Cloudflare provider base_url must be a non-empty string when configured",
+    );
+  }
+  const apiBase = httpsApiBase(baseUrl, "Cloudflare provider base_url");
+  return {
+    apiBase,
+    // This selects only the invocation mechanism. It does not infer managed
+    // capacity, billing, or credential authority from the URL.
+    directCloudflare: apiBase === DEFAULT_API_BASE_URL,
+  };
 }
 
 function apiExecutionContext(env: PurgeR2Environment): {
@@ -168,9 +192,8 @@ function apiExecutionContext(env: PurgeR2Environment): {
       "TAKOS_STORAGE_CLOUDFLARE_API_MODE must be empty or direct",
     );
   }
-  const configuredProviderBase = providerApiBase(env);
   if (mode === "direct") {
-    if (configuredProviderBase) {
+    if (env.TAKOSUMI_PROVIDER_CONFIGS_JSON?.trim()) {
       throw new Error(
         "direct Cloudflare mode must not consume TAKOSUMI_PROVIDER_CONFIGS_JSON",
       );
@@ -183,12 +206,7 @@ function apiExecutionContext(env: PurgeR2Environment): {
       directCloudflare: true,
     };
   }
-  if (configuredProviderBase) {
-    return { apiBase: configuredProviderBase, directCloudflare: false };
-  }
-  throw new Error(
-    "Cloudflare API base is unresolved; lifecycle execution must provide non-secret TAKOSUMI_PROVIDER_CONFIGS_JSON or explicitly select direct mode",
-  );
+  return providerExecutionContext(env);
 }
 
 function responseCleanerOrigin(
@@ -424,7 +442,7 @@ export async function purgeR2BucketBeforeDestroy(
       : responseCleanerOrigin(subdomain);
     if (!workerOrigin) {
       throw new Error(
-        "managed Cloudflare compatibility API did not return the temporary cleaner invocation origin",
+        "custom Cloudflare provider API did not return the temporary cleaner invocation origin",
       );
     }
     const workerUrl = `${workerOrigin}/purge`;
