@@ -2,7 +2,7 @@
 
 ## 0.3.0
 
-- Replaced app-local `tksvc_` HMAC grants with exact Takosumi Interface OAuth verification.
+- Replaced app-local `tksvc_` HMAC grants with current-state Takosumi Interface OAuth verification without static Interface id/revision module inputs.
 - Isolated `/o` data by resolved InterfaceBinding id.
 - Added `mcp.invoke` Interface OAuth while retaining an explicit direct/self-host bearer option.
 - Removed generated signing, MCP, admin, and session credentials plus all credential Outputs.

@@ -78,10 +78,6 @@ function makeEnv(bucket: R2Bucket): Env {
     OIDC_ISSUER_URL: "https://accounts.example",
     APP_WORKSPACE_ID: "workspace_a",
     APP_CAPSULE_ID: "capsule_storage",
-    APP_OBJECT_INTERFACE_ID: "interface_storage_object",
-    APP_OBJECT_INTERFACE_RESOLVED_REVISION: "4",
-    APP_MCP_INTERFACE_ID: "interface_storage_mcp",
-    APP_MCP_INTERFACE_RESOLVED_REVISION: "6",
   };
 }
 
@@ -259,16 +255,5 @@ describe("takos-storage Interface OAuth worker", () => {
       configured,
     );
     expect(response.status).toBe(503);
-  });
-
-  test("rejects a credential from a stale Interface revision", async () => {
-    const response = await worker.fetch(
-      request("GET", "/o/a.txt", { token: TOKENS.read }),
-      {
-        ...makeEnv(new MemoryBucket()),
-        APP_OBJECT_INTERFACE_RESOLVED_REVISION: "5",
-      },
-    );
-    expect(response.status).toBe(401);
   });
 });

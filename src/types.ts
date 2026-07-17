@@ -76,10 +76,4 @@ export interface Env {
   APP_WORKSPACE_ID?: string;
   /** Owning Capsule id required for Interface OAuth evidence. */
   APP_CAPSULE_ID?: string;
-  /** Exact object Interface id and current resolved revision. */
-  APP_OBJECT_INTERFACE_ID?: string;
-  APP_OBJECT_INTERFACE_RESOLVED_REVISION?: string;
-  /** Exact MCP Interface id and current resolved revision. */
-  APP_MCP_INTERFACE_ID?: string;
-  APP_MCP_INTERFACE_RESOLVED_REVISION?: string;
 }
