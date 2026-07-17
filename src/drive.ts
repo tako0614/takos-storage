@@ -3,9 +3,9 @@
  *
  * Session-authenticated (see app-auth.ts) file routes over a fixed bucket
  * area. The server owns the `drive/` prefix: clients speak in relative file
- * paths and can never reach app-owned objects outside it. Apps keep using
- * the `/o` API with `tksvc_` scoped credentials; the two surfaces share one
- * bucket but not credentials.
+ * paths and can never reach app-owned objects outside it. Runtime consumers
+ * use Interface OAuth and each
+ * InterfaceBinding is mapped to a private physical prefix by worker.ts.
  *
  *   GET    /api/drive/list           all drive files (paths relative)
  *   GET    /api/drive/file/<path>    download (HEAD for metadata)
@@ -18,10 +18,12 @@
 
 import type { Env } from "./types.ts";
 import { requireAppAuth } from "./app-auth.ts";
+import { boundedRequestBody, RequestBodyTooLargeError } from "./http-body.ts";
 
 const DRIVE_PREFIX = "drive/";
 const FILE_ROUTE = "/api/drive/file/";
 const LIST_LIMIT = 1000;
+const MAX_DRIVE_PATH_LENGTH = 1_024;
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -38,7 +40,13 @@ function drivePath(pathname: string): string | null {
   } catch {
     return null;
   }
-  if (!path || path.startsWith("/")) return null;
+  if (
+    !path ||
+    path.length > MAX_DRIVE_PATH_LENGTH ||
+    path.startsWith("/") ||
+    path.includes("\0")
+  )
+    return null;
   return path;
 }
 
@@ -54,7 +62,8 @@ export async function handleDriveRoute(
   if (unauthorized) return unauthorized;
 
   if (url.pathname === "/api/drive/list") {
-    if (request.method !== "GET") return json({ error: "method_not_allowed" }, 405);
+    if (request.method !== "GET")
+      return json({ error: "method_not_allowed" }, 405);
     const listing = await env.BUCKET.list({
       prefix: DRIVE_PREFIX,
       limit: LIST_LIMIT,
@@ -80,8 +89,9 @@ export async function handleDriveRoute(
     const object = await env.BUCKET.get(key);
     if (!object) return json({ error: "not_found" }, 404);
     const headers = new Headers({
-      "content-type": object.httpMetadata?.contentType ??
-        "application/octet-stream",
+      "content-type":
+        object.httpMetadata?.contentType ?? "application/octet-stream",
+      "x-content-type-options": "nosniff",
     });
     if (object.httpEtag) headers.set("etag", object.httpEtag);
     if (request.method === "HEAD") {
@@ -91,11 +101,19 @@ export async function handleDriveRoute(
   }
 
   if (request.method === "PUT") {
-    const contentType = request.headers.get("content-type") ??
-      "application/octet-stream";
-    const data = await request.arrayBuffer();
-    await env.BUCKET.put(key, data, { httpMetadata: { contentType } });
-    return json({ ok: true, path }, 201);
+    const contentType =
+      request.headers.get("content-type") ?? "application/octet-stream";
+    const body = boundedRequestBody(request);
+    if (!body.ok) return json({ error: body.error }, body.status);
+    try {
+      await env.BUCKET.put(key, body.body, { httpMetadata: { contentType } });
+      return json({ ok: true, path }, 201);
+    } catch (error) {
+      if (error instanceof RequestBodyTooLargeError) {
+        return json({ error: "object_too_large" }, 413);
+      }
+      throw error;
+    }
   }
 
   if (request.method === "DELETE") {

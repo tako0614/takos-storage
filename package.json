@@ -1,16 +1,29 @@
 {
   "name": "takos-storage",
-  "version": "0.2.4",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "Standalone object-store service (installable Capsule).",
+  "license": "AGPL-3.0-only",
   "scripts": {
     "build:worker": "bun run scripts/build-worker.ts",
     "smoke:postdeploy": "bun run scripts/post-deploy-smoke.ts",
+    "storage:pre-destroy": "bun run scripts/purge-r2-before-destroy.ts",
+    "storage:migrate-binding-prefix": "bun run scripts/migrate-r2-binding-prefix.ts",
     "test": "bun test",
-    "check": "bunx tsc --noEmit"
+    "audit": "bun audit --audit-level=high",
+    "check": "bunx tsc --noEmit",
+    "lint": "bunx eslint . --max-warnings=0",
+    "fmt": "bunx prettier --write .",
+    "fmt:check": "bunx prettier --check ."
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/bun": "^1.3.14",
+    "eslint": "^10.7.0",
+    "globals": "^17.7.0",
+    "prettier": "^3.9.5",
+    "typescript-eslint": "^8.64.0",
     "typescript": "^5.6.0"
   }
 }

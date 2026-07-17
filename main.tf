@@ -8,11 +8,14 @@ terraform {
     }
     http = {
       source  = "hashicorp/http"
-      version = "~> 3.5"
+      version = "= 3.6.0"
     }
+    # Upgrade bridge only: v0.2.x state contains random_id credentials. There
+    # are no random resources in v0.3.0, but the pinned provider lets OpenTofu
+    # destroy those retired state objects during the first upgrade apply.
     random = {
       source  = "hashicorp/random"
-      version = "~> 3.7"
+      version = "= 3.9.0"
     }
   }
 }
@@ -67,20 +70,8 @@ variable "public_url" {
   }
 }
 
-variable "service_grant_signing_key" {
-  description = "Shared HMAC signing key for scoped service grants (64-char lowercase hex). When empty, a key is generated. Takosumi mints grants with the same value it reads from the service_grant_signing_key output."
-  type        = string
-  default     = ""
-  sensitive   = true
-
-  validation {
-    condition     = trimspace(var.service_grant_signing_key) == "" || can(regex("^[a-f0-9]{64}$", trimspace(var.service_grant_signing_key)))
-    error_message = "service_grant_signing_key must be empty or a 64-character lowercase hex key."
-  }
-}
-
 variable "published_mcp_auth_token" {
-  description = "Optional bearer token protecting the published /mcp endpoint. A 32-byte token is generated when empty."
+  description = "Optional standalone bearer protecting /mcp for direct/self-host clients. Managed calls use Interface OAuth; no credential is generated or output when this is empty."
   type        = string
   default     = ""
   sensitive   = true
@@ -88,18 +79,6 @@ variable "published_mcp_auth_token" {
   validation {
     condition     = trimspace(var.published_mcp_auth_token) == "" || length(trimspace(var.published_mcp_auth_token)) >= 32
     error_message = "published_mcp_auth_token must be empty or at least 32 characters."
-  }
-}
-
-variable "storage_admin_token" {
-  description = "Optional bearer token for destructive storage administration such as POST /api/admin/empty. A 32-byte token is generated when empty."
-  type        = string
-  default     = ""
-  sensitive   = true
-
-  validation {
-    condition     = trimspace(var.storage_admin_token) == "" || length(trimspace(var.storage_admin_token)) >= 32
-    error_message = "storage_admin_token must be empty or at least 32 characters."
   }
 }
 
@@ -116,12 +95,16 @@ variable "env" {
       !contains([
         "BUCKET",
         "APP_URL",
-        "STORAGE_TOKEN_SIGNING_KEY",
         "PUBLISHED_MCP_AUTH_TOKEN",
-        "STORAGE_ADMIN_TOKEN",
         "OIDC_ISSUER_URL",
         "OIDC_CLIENT_ID",
         "APP_AUTH_REQUIRED",
+        "APP_WORKSPACE_ID",
+        "APP_CAPSULE_ID",
+        "APP_OBJECT_INTERFACE_ID",
+        "APP_OBJECT_INTERFACE_RESOLVED_REVISION",
+        "APP_MCP_INTERFACE_ID",
+        "APP_MCP_INTERFACE_RESOLVED_REVISION",
       ], name)
     ])
     error_message = "env keys must be uppercase Worker plain-text variable names and must not be secret-like or reserved by the takos-storage module."
@@ -129,7 +112,7 @@ variable "env" {
 }
 
 variable "takosumi_accounts_issuer_url" {
-  description = "Optional Takosumi Accounts OIDC issuer URL. When set together with takosumi_accounts_client_id, the workspace drive UI requires sign-in."
+  description = "Optional Takosumi Accounts issuer. Interface OAuth validates runtime calls against its UserInfo endpoint; together with a client id it also enables drive sign-in."
   type        = string
   default     = ""
 
@@ -153,7 +136,7 @@ variable "takosumi_accounts_client_secret" {
 }
 
 variable "app_session_secret" {
-  description = "HMAC secret sealing drive UI session cookies. Generated when empty and sign-in is enabled."
+  description = "HMAC secret sealing drive UI session cookies. Required when drive sign-in is enabled; it is never generated or returned by this module."
   type        = string
   default     = ""
   sensitive   = true
@@ -161,6 +144,52 @@ variable "app_session_secret" {
   validation {
     condition     = trimspace(var.app_session_secret) == "" || length(trimspace(var.app_session_secret)) >= 16
     error_message = "app_session_secret must be empty or at least 16 characters."
+  }
+}
+
+variable "takosumi_workspace_id" {
+  description = "Owning Takosumi Workspace id used to verify Interface OAuth evidence and optional drive membership."
+  type        = string
+  default     = ""
+}
+
+variable "takosumi_capsule_id" {
+  description = "Owning Takosumi Capsule id used to verify Interface OAuth evidence."
+  type        = string
+  default     = ""
+}
+
+variable "takosumi_object_interface_id" {
+  description = "Exact service-side object Interface id expected in Interface OAuth evidence."
+  type        = string
+  default     = ""
+}
+
+variable "takosumi_object_interface_resolved_revision" {
+  description = "Current resolved revision of the service-side object Interface. Stale credentials are rejected."
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = var.takosumi_object_interface_resolved_revision >= 0 && floor(var.takosumi_object_interface_resolved_revision) == var.takosumi_object_interface_resolved_revision
+    error_message = "takosumi_object_interface_resolved_revision must be a non-negative integer."
+  }
+}
+
+variable "takosumi_mcp_interface_id" {
+  description = "Exact service-side MCP Interface id expected in Interface OAuth evidence."
+  type        = string
+  default     = ""
+}
+
+variable "takosumi_mcp_interface_resolved_revision" {
+  description = "Current resolved revision of the service-side MCP Interface. Stale credentials are rejected."
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = var.takosumi_mcp_interface_resolved_revision >= 0 && floor(var.takosumi_mcp_interface_resolved_revision) == var.takosumi_mcp_interface_resolved_revision
+    error_message = "takosumi_mcp_interface_resolved_revision must be a non-negative integer."
   }
 }
 
@@ -190,7 +219,7 @@ variable "worker_bundle_path" {
 variable "worker_release_tag" {
   description = "GitHub release tag whose takosumi-artifact.json selects the default Worker bundle and SHA-256. Set empty to use worker_bundle_path."
   type        = string
-  default     = "v0.2.4"
+  default     = "v0.3.0"
 
   validation {
     condition     = trimspace(var.worker_release_tag) == "" || can(regex("^v[0-9]+\\.[0-9]+\\.[0-9]+([-+][0-9A-Za-z.-]+)?$", trimspace(var.worker_release_tag)))
@@ -285,18 +314,20 @@ locals {
   api_base_url     = local.launch_url != null ? "${local.launch_url}/o" : null
   mcp_url          = local.launch_url != null ? "${local.launch_url}/mcp" : null
 
-  provided_signing_key  = trimspace(var.service_grant_signing_key)
-  effective_signing_key = local.provided_signing_key != "" ? local.provided_signing_key : random_id.signing_key.hex
-  provided_mcp_token    = trimspace(var.published_mcp_auth_token)
-  effective_mcp_token   = local.provided_mcp_token != "" ? local.provided_mcp_token : random_id.published_mcp_auth_token.hex
-  provided_admin_token  = trimspace(var.storage_admin_token)
-  effective_admin_token = local.provided_admin_token != "" ? local.provided_admin_token : random_id.admin_token.hex
-  extra_worker_env      = { for name, value in var.env : name => value if trimspace(value) != "" }
+  provided_mcp_token = trimspace(var.published_mcp_auth_token)
+  extra_worker_env   = { for name, value in var.env : name => value if trimspace(value) != "" }
 
-  app_auth_enabled         = trimspace(var.takosumi_accounts_issuer_url) != "" && trimspace(var.takosumi_accounts_client_id) != ""
-  provided_session_secret  = trimspace(var.app_session_secret)
-  effective_session_secret = local.provided_session_secret != "" ? local.provided_session_secret : random_id.session_secret.hex
-  oidc_redirect_uri        = local.launch_url != null ? "${local.launch_url}/api/auth/callback/takos" : null
+  accounts_issuer_url       = trimspace(var.takosumi_accounts_issuer_url)
+  app_auth_enabled          = local.accounts_issuer_url != "" && trimspace(var.takosumi_accounts_client_id) != ""
+  provided_session_secret   = trimspace(var.app_session_secret)
+  workspace_id              = trimspace(var.takosumi_workspace_id)
+  capsule_id                = trimspace(var.takosumi_capsule_id)
+  interface_owner_enabled   = local.workspace_id != "" && local.capsule_id != ""
+  object_interface_id       = trimspace(var.takosumi_object_interface_id)
+  object_interface_revision = var.takosumi_object_interface_resolved_revision
+  mcp_interface_id          = trimspace(var.takosumi_mcp_interface_id)
+  mcp_interface_revision    = var.takosumi_mcp_interface_resolved_revision
+  oidc_redirect_uri         = local.launch_url != null ? "${local.launch_url}/api/auth/callback/takos" : null
 
   r2_objects_bucket = "${local.resource_prefix}-objects"
 }
@@ -314,38 +345,6 @@ data "http" "worker_release_manifest" {
     attempts     = 3
     min_delay_ms = 500
     max_delay_ms = 5000
-  }
-}
-
-resource "random_id" "signing_key" {
-  byte_length = 32
-
-  keepers = {
-    project_name = local.resource_prefix
-  }
-}
-
-resource "random_id" "session_secret" {
-  byte_length = 32
-
-  keepers = {
-    project_name = local.resource_prefix
-  }
-}
-
-resource "random_id" "published_mcp_auth_token" {
-  byte_length = 32
-
-  keepers = {
-    project_name = local.resource_prefix
-  }
-}
-
-resource "random_id" "admin_token" {
-  byte_length = 32
-
-  keepers = {
-    project_name = local.resource_prefix
   }
 }
 
@@ -395,29 +394,57 @@ resource "cloudflare_workers_script" "worker" {
         text = local.launch_url != null ? local.launch_url : ""
       },
     ],
-    [
-      {
-        type = "secret_text"
-        name = "STORAGE_TOKEN_SIGNING_KEY"
-        text = local.effective_signing_key
-      },
+    local.provided_mcp_token != "" ? [
       {
         type = "secret_text"
         name = "PUBLISHED_MCP_AUTH_TOKEN"
-        text = local.effective_mcp_token
+        text = local.provided_mcp_token
       },
-      {
-        type = "secret_text"
-        name = "STORAGE_ADMIN_TOKEN"
-        text = local.effective_admin_token
-      },
-    ],
-    local.app_auth_enabled ? [
+    ] : [],
+    local.accounts_issuer_url != "" ? [
       {
         type = "plain_text"
         name = "OIDC_ISSUER_URL"
-        text = trimspace(var.takosumi_accounts_issuer_url)
+        text = local.accounts_issuer_url
       },
+    ] : [],
+    local.interface_owner_enabled ? [
+      {
+        type = "plain_text"
+        name = "APP_WORKSPACE_ID"
+        text = local.workspace_id
+      },
+      {
+        type = "plain_text"
+        name = "APP_CAPSULE_ID"
+        text = local.capsule_id
+      },
+    ] : [],
+    local.object_interface_id != "" && local.object_interface_revision > 0 ? [
+      {
+        type = "plain_text"
+        name = "APP_OBJECT_INTERFACE_ID"
+        text = local.object_interface_id
+      },
+      {
+        type = "plain_text"
+        name = "APP_OBJECT_INTERFACE_RESOLVED_REVISION"
+        text = tostring(local.object_interface_revision)
+      },
+    ] : [],
+    local.mcp_interface_id != "" && local.mcp_interface_revision > 0 ? [
+      {
+        type = "plain_text"
+        name = "APP_MCP_INTERFACE_ID"
+        text = local.mcp_interface_id
+      },
+      {
+        type = "plain_text"
+        name = "APP_MCP_INTERFACE_RESOLVED_REVISION"
+        text = tostring(local.mcp_interface_revision)
+      },
+    ] : [],
+    local.app_auth_enabled ? [
       {
         type = "plain_text"
         name = "OIDC_CLIENT_ID"
@@ -431,7 +458,7 @@ resource "cloudflare_workers_script" "worker" {
       {
         type = "secret_text"
         name = "APP_SESSION_SECRET"
-        text = local.effective_session_secret
+        text = local.provided_session_secret
       },
     ] : [],
     local.app_auth_enabled && trimspace(var.takosumi_accounts_client_secret) != "" ? [
@@ -451,6 +478,29 @@ resource "cloudflare_workers_script" "worker" {
   )
 
   lifecycle {
+    precondition {
+      condition = !local.cloudflare_worker_enabled || (
+        local.launch_url != null &&
+        local.accounts_issuer_url != "" &&
+        local.interface_owner_enabled &&
+        local.object_interface_id != "" &&
+        local.object_interface_revision > 0 &&
+        local.mcp_interface_id != "" &&
+        local.mcp_interface_revision > 0
+      )
+      error_message = "A deployed Worker requires a public URL, Accounts issuer, owning Workspace/Capsule, and exact object/MCP Interface ids and resolved revisions."
+    }
+
+    precondition {
+      condition     = (local.workspace_id == "") == (local.capsule_id == "")
+      error_message = "takosumi_workspace_id and takosumi_capsule_id must be set together."
+    }
+
+    precondition {
+      condition     = !local.app_auth_enabled || local.provided_session_secret != ""
+      error_message = "app_session_secret is required when Takosumi Accounts drive sign-in is enabled."
+    }
+
     precondition {
       condition = !local.worker_bundle_uses_manifest || (
         try(local.worker_release_manifest.kind, "") == "takosumi.worker-artifact@v1" &&

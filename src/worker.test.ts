@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import worker from "./worker.ts";
-import { mintStorageToken, type StorageTokenPayload } from "./token.ts";
+import { createStorageWorker } from "./worker.ts";
 import type {
   Env,
   R2Bucket,
@@ -11,7 +10,14 @@ import type {
   R2PutOptions,
 } from "./types.ts";
 
-const SECRET = "worker-test-signing-key-abcdef";
+const TOKENS = {
+  read: "taksrv_storage_read",
+  write: "taksrv_storage_write",
+  delete: "taksrv_storage_delete",
+  list: "taksrv_storage_list",
+  otherBindingRead: "taksrv_storage_other_binding_read",
+  wrongCapsule: "taksrv_storage_wrong_capsule",
+} as const;
 
 class MemoryBucket implements R2Bucket {
   readonly store = new Map<string, { data: Uint8Array; contentType: string }>();
@@ -25,7 +31,7 @@ class MemoryBucket implements R2Bucket {
       uploaded: new Date(0),
       httpEtag: '"etag"',
       httpMetadata: { contentType: entry.contentType },
-      body: new Response(entry.data).body as ReadableStream,
+      body: new Response(entry.data.slice().buffer).body as ReadableStream,
       arrayBuffer: async () => entry.data.buffer as ArrayBuffer,
     };
   }
@@ -53,17 +59,14 @@ class MemoryBucket implements R2Bucket {
     }
   }
 
-  async list(options?: R2ListOptions): Promise<R2Objects> {
-    const prefix = options?.prefix ?? "";
-    const objects: R2Object[] = [...this.store.entries()]
-      .filter(([key]) => key.startsWith(prefix))
-      .map(([key, entry]) => ({
-        key,
-        size: entry.data.byteLength,
-        uploaded: new Date(0),
-        body: new Response(entry.data).body as ReadableStream,
-        arrayBuffer: async () => entry.data.buffer as ArrayBuffer,
-      }));
+  async list(options: R2ListOptions = {}): Promise<R2Objects> {
+    const prefix = options.prefix ?? "";
+    const objects = await Promise.all(
+      [...this.store.keys()]
+        .filter((key) => key.startsWith(prefix))
+        .sort()
+        .map((key) => this.get(key) as Promise<R2Object>),
+    );
     return { objects, truncated: false };
   }
 }
@@ -71,23 +74,47 @@ class MemoryBucket implements R2Bucket {
 function makeEnv(bucket: R2Bucket): Env {
   return {
     BUCKET: bucket,
-    STORAGE_TOKEN_SIGNING_KEY: SECRET,
-    STORAGE_ADMIN_TOKEN: "storage-admin-token-at-least-32-characters",
+    APP_URL: "https://storage.example",
+    OIDC_ISSUER_URL: "https://accounts.example",
+    APP_WORKSPACE_ID: "workspace_a",
+    APP_CAPSULE_ID: "capsule_storage",
+    APP_OBJECT_INTERFACE_ID: "interface_storage_object",
+    APP_OBJECT_INTERFACE_RESOLVED_REVISION: "4",
+    APP_MCP_INTERFACE_ID: "interface_storage_mcp",
+    APP_MCP_INTERFACE_RESOLVED_REVISION: "6",
   };
 }
 
-async function token(over: Partial<StorageTokenPayload> = {}): Promise<string> {
-  return mintStorageToken(SECRET, {
-    v: 1,
-    ws: "ws1",
-    sub: "inst-office",
-    pfx: "ws1/office/",
-    cap: ["r", "w", "d", "l"],
-    aud: "storage.object",
-    iat: Math.floor(Date.now() / 1000),
-    ...over,
+const worker = createStorageWorker(async (_input, init) => {
+  const token = /^Bearer (.+)$/u.exec(
+    new Headers(init?.headers).get("authorization") ?? "",
+  )?.[1];
+  const permissionByToken: Record<string, string> = {
+    [TOKENS.read]: "storage.object.read",
+    [TOKENS.write]: "storage.object.write",
+    [TOKENS.delete]: "storage.object.delete",
+    [TOKENS.list]: "storage.object.list",
+    [TOKENS.otherBindingRead]: "storage.object.read",
+    [TOKENS.wrongCapsule]: "storage.object.read",
+  };
+  const permission = token ? permissionByToken[token] : undefined;
+  if (!permission) return Response.json({}, { status: 401 });
+  return Response.json({
+    token_use: "interface_oauth",
+    sub: "principal_storage",
+    aud: "https://storage.example/o",
+    scope: permission,
+    takosumi: {
+      workspace_id: "workspace_a",
+      capsule_id:
+        token === TOKENS.wrongCapsule ? "capsule_other" : "capsule_storage",
+      interface_id: "interface_storage_object",
+      interface_binding_id:
+        token === TOKENS.otherBindingRead ? "binding_b" : "binding_a",
+      interface_resolved_revision: 4,
+    },
   });
-}
+});
 
 function request(
   method: string,
@@ -104,191 +131,144 @@ function request(
   });
 }
 
-describe("takos-storage worker", () => {
-  test("healthz needs no auth", async () => {
-    const res = await worker.fetch(
-      request("GET", "/healthz"),
-      makeEnv(new MemoryBucket()),
-    );
-    expect(res.status).toBe(200);
-  });
-
-  test("root console needs no auth", async () => {
-    const res = await worker.fetch(
-      request("GET", "/"),
-      makeEnv(new MemoryBucket()),
-    );
-    expect(res.status).toBe(200);
-    expect(res.headers.get("content-type")).toContain("text/html");
-    expect(await res.text()).toContain("Takos Storage");
-  });
-
-  test("admin empty is fail-closed and removes every object", async () => {
-    const bucket = new MemoryBucket();
-    await bucket.put("drive/user-file", "drive");
-    await bucket.put("space/consumer/document", "app");
-    const env = makeEnv(bucket);
-
-    const unauthorized = await worker.fetch(
-      new Request("https://storage.example/api/admin/empty", {
-        method: "POST",
-        headers: {
-          authorization: "Bearer wrong-token",
-          "x-takos-storage-action": "empty",
-        },
-      }),
-      env,
-    );
-    expect(unauthorized.status).toBe(404);
-    expect(bucket.store.size).toBe(2);
-
-    const purged = await worker.fetch(
-      new Request("https://storage.example/api/admin/empty", {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${env.STORAGE_ADMIN_TOKEN}`,
-          "x-takos-storage-action": "empty",
-        },
-      }),
-      env,
-    );
-    expect(purged.status).toBe(200);
-    expect(await purged.json()).toEqual({ ok: true, deleted: 2 });
-    expect(bucket.store.size).toBe(0);
-  });
-
-  test("/ui serves the same drive surface", async () => {
-    const res = await worker.fetch(
-      request("GET", "/ui"),
-      makeEnv(new MemoryBucket()),
-    );
-    expect(res.status).toBe(200);
-    expect(res.headers.get("content-type")).toContain("text/html");
-    const html = await res.text();
-    expect(html).toContain("Takos Storage");
-    expect(html).toContain('id="splash"');
-  });
-
-  test("console ships the drive-style file manager", async () => {
-    const res = await worker.fetch(
-      request("GET", "/"),
-      makeEnv(new MemoryBucket()),
-    );
-    const html = await res.text();
-    // The drive UI runs on the user session surface, never on tksvc_ credentials.
-    expect(html).toContain("/api/drive/list");
-    expect(html).toContain("/api/auth/me");
-    expect(html).toContain("/api/auth/login");
-    expect(html).not.toContain("tksvc_");
-    // Drive chrome: New menu (upload / new folder), nav, list/grid, sorting.
-    expect(html).toContain('data-new="upload"');
-    expect(html).toContain('data-new="folder"');
-    expect(html).toContain('data-nav="recent"');
-    expect(html).toContain('data-view="list"');
-    expect(html).toContain('data-view="grid"');
-    expect(html).toContain('data-sort="name"');
-    expect(html).toContain('data-sort="uploaded"');
-    // Item actions confirm through dialogs, not window.confirm/prompt.
-    expect(html).toContain('data-action="rename"');
-    expect(html).toContain('data-action="delete"');
-    expect(html).toContain('id="delete-dialog"');
-    expect(html).not.toContain("window.confirm");
-    expect(html).not.toContain("window.prompt");
-    // en + ja catalogs ship together.
-    expect(html).toContain("My Drive");
-    expect(html).toContain("マイドライブ");
-    expect(html).toContain("新しいフォルダ");
-    expect(html).toContain("ファイルをアップロード");
-    expect(html).toContain("最終更新");
-  });
-
-  test("PUT then GET round-trips within the prefix", async () => {
+describe("takos-storage Interface OAuth worker", () => {
+  test("keeps health and browser console public", async () => {
     const env = makeEnv(new MemoryBucket());
-    const t = await token();
+    expect((await worker.fetch(request("GET", "/healthz"), env)).status).toBe(
+      200,
+    );
+    const root = await worker.fetch(request("GET", "/"), env);
+    expect(root.status).toBe(200);
+    expect(await root.text()).toContain("Takos Storage");
+  });
+
+  test("serves the launcher icon referenced by service-side Interface metadata", async () => {
+    const response = await worker.fetch(
+      request("GET", "/icons/takos-storage.svg"),
+      makeEnv(new MemoryBucket()),
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("image/svg+xml");
+    expect(await response.text()).toContain("<svg");
+  });
+
+  test("does not expose a standing destructive admin endpoint", async () => {
+    const response = await worker.fetch(
+      request("POST", "/api/admin/empty"),
+      makeEnv(new MemoryBucket()),
+    );
+    expect(response.status).toBe(404);
+  });
+
+  test("round-trips inside the authorizing InterfaceBinding namespace", async () => {
+    const bucket = new MemoryBucket();
+    const env = makeEnv(bucket);
     const put = await worker.fetch(
-      request("PUT", "/o/ws1/office/doc.md", { token: t, body: "hello" }),
+      request("PUT", "/o/docs/a.txt", {
+        token: TOKENS.write,
+        body: "hello",
+      }),
       env,
     );
     expect(put.status).toBe(201);
+    expect([...bucket.store.keys()]).toEqual([
+      "interface-bindings/binding_a/docs/a.txt",
+    ]);
     const get = await worker.fetch(
-      request("GET", "/o/ws1/office/doc.md", { token: t }),
+      request("GET", "/o/docs/a.txt", { token: TOKENS.read }),
       env,
     );
     expect(get.status).toBe(200);
     expect(await get.text()).toBe("hello");
   });
 
-  test("rejects missing token", async () => {
-    const res = await worker.fetch(
-      request("GET", "/o/ws1/office/doc.md"),
-      makeEnv(new MemoryBucket()),
-    );
-    expect(res.status).toBe(401);
-  });
-
-  test("rejects writes from a read-only token", async () => {
+  test("requires one exact permission and exact owner evidence", async () => {
     const env = makeEnv(new MemoryBucket());
-    const readOnly = await token({ cap: ["r", "l"] });
-    const res = await worker.fetch(
-      request("PUT", "/o/ws1/office/doc.md", { token: readOnly, body: "x" }),
+    const readOnWrite = await worker.fetch(
+      request("PUT", "/o/a.txt", { token: TOKENS.read, body: "x" }),
       env,
     );
-    expect(res.status).toBe(403);
+    expect(readOnWrite.status).toBe(401);
+    const wrongCapsule = await worker.fetch(
+      request("GET", "/o/a.txt", { token: TOKENS.wrongCapsule }),
+      env,
+    );
+    expect(wrongCapsule.status).toBe(401);
   });
 
-  test("rejects access outside the token prefix", async () => {
+  test("rejects declared oversized writes before touching R2", async () => {
     const env = makeEnv(new MemoryBucket());
-    const t = await token({ pfx: "ws1/office/" });
-    const res = await worker.fetch(
-      request("GET", "/o/ws1/secrets/other.md", { token: t }),
-      env,
-    );
-    expect(res.status).toBe(403);
+    const oversized = request("PUT", "/o/huge.bin", {
+      token: TOKENS.write,
+      body: "x",
+    });
+    oversized.headers.set("content-length", String(50 * 1024 * 1024 + 1));
+    const response = await worker.fetch(oversized, env);
+    expect(response.status).toBe(413);
   });
 
-  test("lists only within the token prefix", async () => {
-    const bucket = new MemoryBucket();
-    const env = makeEnv(bucket);
-    const t = await token();
-    await worker.fetch(
-      request("PUT", "/o/ws1/office/a.md", { token: t, body: "a" }),
-      env,
-    );
-    await worker.fetch(
-      request("PUT", "/o/ws1/office/b.md", { token: t, body: "b" }),
-      env,
-    );
-
-    const ok = await worker.fetch(
-      request("GET", "/o?prefix=ws1/office/", { token: t }),
-      env,
-    );
-    expect(ok.status).toBe(200);
-    expect((await ok.json()).objects).toHaveLength(2);
-
-    const outside = await worker.fetch(
-      request("GET", "/o?prefix=ws1/secrets/", { token: t }),
-      env,
-    );
-    expect(outside.status).toBe(403);
-  });
-
-  test("DELETE removes an object", async () => {
+  test("isolates objects across InterfaceBindings", async () => {
     const env = makeEnv(new MemoryBucket());
-    const t = await token();
     await worker.fetch(
-      request("PUT", "/o/ws1/office/gone.md", { token: t, body: "z" }),
+      request("PUT", "/o/private.txt", {
+        token: TOKENS.write,
+        body: "binding a",
+      }),
       env,
     );
-    const del = await worker.fetch(
-      request("DELETE", "/o/ws1/office/gone.md", { token: t }),
+    const other = await worker.fetch(
+      request("GET", "/o/private.txt", { token: TOKENS.otherBindingRead }),
       env,
     );
-    expect(del.status).toBe(200);
-    const get = await worker.fetch(
-      request("GET", "/o/ws1/office/gone.md", { token: t }),
+    expect(other.status).toBe(404);
+  });
+
+  test("lists virtual keys without exposing the physical namespace", async () => {
+    const env = makeEnv(new MemoryBucket());
+    await worker.fetch(
+      request("PUT", "/o/docs/a.txt", {
+        token: TOKENS.write,
+        body: "a",
+      }),
       env,
     );
-    expect(get.status).toBe(404);
+    const list = await worker.fetch(
+      request("GET", "/o?prefix=docs/", { token: TOKENS.list }),
+      env,
+    );
+    const body = (await list.json()) as { objects: Array<{ key: string }> };
+    expect(list.status).toBe(200);
+    expect(body.objects.map((entry) => entry.key)).toEqual(["docs/a.txt"]);
+  });
+
+  test("fails closed when Interface OAuth owner configuration is absent", async () => {
+    const response = await worker.fetch(
+      request("GET", "/o/a.txt", { token: TOKENS.read }),
+      { BUCKET: new MemoryBucket() },
+    );
+    expect(response.status).toBe(503);
+  });
+
+  test("never derives OAuth audience authority from a caller-controlled Host", async () => {
+    const configured = makeEnv(new MemoryBucket());
+    delete configured.APP_URL;
+    const response = await worker.fetch(
+      new Request("https://attacker-controlled.example/o/a.txt", {
+        headers: { authorization: `Bearer ${TOKENS.read}` },
+      }),
+      configured,
+    );
+    expect(response.status).toBe(503);
+  });
+
+  test("rejects a credential from a stale Interface revision", async () => {
+    const response = await worker.fetch(
+      request("GET", "/o/a.txt", { token: TOKENS.read }),
+      {
+        ...makeEnv(new MemoryBucket()),
+        APP_OBJECT_INTERFACE_RESOLVED_REVISION: "5",
+      },
+    );
+    expect(response.status).toBe(401);
   });
 });
