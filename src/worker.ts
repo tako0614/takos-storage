@@ -71,12 +71,6 @@ function interfaceResourceUri(env: Env, path: string): string {
   }
 }
 
-function positiveRevision(value?: string): number | undefined {
-  if (!value || !/^[1-9][0-9]*$/u.test(value)) return undefined;
-  const revision = Number(value);
-  return Number.isSafeInteger(revision) ? revision : undefined;
-}
-
 function bindingStoragePrefix(interfaceBindingId: string): string {
   return `${INTERFACE_BINDING_PREFIX}${encodeURIComponent(interfaceBindingId)}/`;
 }
@@ -147,17 +141,12 @@ async function fetchHandler(
   if (!expectedPermission) return json({ error: "method_not_allowed" }, 405);
 
   const audience = interfaceResourceUri(env, "/o");
-  const interfaceRevision = positiveRevision(
-    env.APP_OBJECT_INTERFACE_RESOLVED_REVISION,
-  );
   if (
     !hasValidInterfaceOAuthConfiguration({
       issuerUrl: env.OIDC_ISSUER_URL,
       audience,
       workspaceId: env.APP_WORKSPACE_ID,
       capsuleId: env.APP_CAPSULE_ID,
-      interfaceId: env.APP_OBJECT_INTERFACE_ID,
-      interfaceResolvedRevision: interfaceRevision,
     })
   ) {
     return json({ error: "interface_oauth_unconfigured" }, 503);
@@ -176,8 +165,6 @@ async function fetchHandler(
       expectedAudience: audience,
       expectedWorkspaceId: env.APP_WORKSPACE_ID,
       expectedCapsuleId: env.APP_CAPSULE_ID,
-      expectedInterfaceId: env.APP_OBJECT_INTERFACE_ID,
-      expectedInterfaceResolvedRevision: interfaceRevision,
       ...(interfaceUserInfoFetch ? { fetchImpl: interfaceUserInfoFetch } : {}),
     },
   );

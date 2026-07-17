@@ -9,8 +9,6 @@ export interface InterfaceOAuthOptions {
   expectedAudience: string;
   expectedWorkspaceId?: string;
   expectedCapsuleId?: string;
-  expectedInterfaceId?: string;
-  expectedInterfaceResolvedRevision?: number;
   fetchImpl?: (
     input: RequestInfo | URL,
     init?: RequestInit,
@@ -106,17 +104,12 @@ export function hasValidInterfaceOAuthConfiguration(input: {
   audience?: string;
   workspaceId?: string;
   capsuleId?: string;
-  interfaceId?: string;
-  interfaceResolvedRevision?: number;
 }): boolean {
   return (
     userInfoEndpoint(input.issuerUrl) !== null &&
     canonicalResourceUri(input.audience ?? "") !== null &&
     boundedId(input.workspaceId) &&
-    boundedId(input.capsuleId) &&
-    boundedId(input.interfaceId) &&
-    Number.isSafeInteger(input.interfaceResolvedRevision) &&
-    (input.interfaceResolvedRevision ?? 0) > 0
+    boundedId(input.capsuleId)
   );
 }
 
@@ -163,17 +156,11 @@ export async function authorizeInterfaceOAuthBearer(
   const expectedAudience = canonicalResourceUri(options.expectedAudience);
   const expectedWorkspaceId = options.expectedWorkspaceId?.trim();
   const expectedCapsuleId = options.expectedCapsuleId?.trim();
-  const expectedInterfaceId = options.expectedInterfaceId?.trim();
-  const expectedInterfaceResolvedRevision =
-    options.expectedInterfaceResolvedRevision;
   if (
     !endpoint ||
     !expectedAudience ||
     !boundedId(expectedWorkspaceId) ||
     !boundedId(expectedCapsuleId) ||
-    !boundedId(expectedInterfaceId) ||
-    !Number.isSafeInteger(expectedInterfaceResolvedRevision) ||
-    (expectedInterfaceResolvedRevision ?? 0) <= 0 ||
     !validPermission(expectedPermission) ||
     !requestTargetsResource(request, expectedAudience) ||
     !token.startsWith(INTERFACE_TOKEN_PREFIX) ||
@@ -206,9 +193,10 @@ export async function authorizeInterfaceOAuthBearer(
       claims.scope !== expectedPermission ||
       evidence.workspace_id !== expectedWorkspaceId ||
       evidence.capsule_id !== expectedCapsuleId ||
-      evidence.interface_id !== expectedInterfaceId ||
+      !boundedId(evidence.interface_id) ||
       !boundedId(evidence.interface_binding_id) ||
-      evidence.interface_resolved_revision !== expectedInterfaceResolvedRevision
+      !Number.isSafeInteger(evidence.interface_resolved_revision) ||
+      (evidence.interface_resolved_revision as number) <= 0
     ) {
       return null;
     }

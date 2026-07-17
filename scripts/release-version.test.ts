@@ -45,7 +45,7 @@ describe("release version", () => {
       'public_origin    = trimsuffix(trimspace(var.public_url), "/")',
     );
     expect(moduleSource).toContain(
-      'accounts_issuer_url       = trimsuffix(trimspace(var.takosumi_accounts_issuer_url), "/")',
+      'accounts_issuer_url     = trimsuffix(trimspace(var.takosumi_accounts_issuer_url), "/")',
     );
     expect(moduleSource).toContain('name = "APP_URL"');
     expect(moduleSource).toContain(
@@ -54,5 +54,22 @@ describe("release version", () => {
     expect(outputsSource).toContain("value       = local.launch_url");
     expect(outputsSource).toContain("value       = local.api_base_url");
     expect(outputsSource).toContain("value       = local.mcp_url");
+  });
+
+  test("does not require post-apply Interface evidence as module input", () => {
+    expect(moduleSource).not.toContain("takosumi_object_interface_id");
+    expect(moduleSource).not.toContain(
+      "takosumi_object_interface_resolved_revision",
+    );
+    expect(moduleSource).not.toContain("takosumi_mcp_interface_id");
+    expect(moduleSource).not.toContain(
+      "takosumi_mcp_interface_resolved_revision",
+    );
+    expect(moduleSource).not.toContain("APP_OBJECT_INTERFACE_ID");
+    expect(moduleSource).not.toContain(
+      "APP_OBJECT_INTERFACE_RESOLVED_REVISION",
+    );
+    expect(moduleSource).not.toContain("APP_MCP_INTERFACE_ID");
+    expect(moduleSource).not.toContain("APP_MCP_INTERFACE_RESOLVED_REVISION");
   });
 });
