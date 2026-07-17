@@ -39,4 +39,20 @@ describe("release version", () => {
     expect(moduleSource).not.toContain('variable "service_grant_signing_key"');
     expect(moduleSource).toContain('version = "= 3.9.0"');
   });
+
+  test("uses one canonical origin for Worker bindings and published audiences", () => {
+    expect(moduleSource).toContain(
+      'public_origin    = trimsuffix(trimspace(var.public_url), "/")',
+    );
+    expect(moduleSource).toContain(
+      'accounts_issuer_url       = trimsuffix(trimspace(var.takosumi_accounts_issuer_url), "/")',
+    );
+    expect(moduleSource).toContain('name = "APP_URL"');
+    expect(moduleSource).toContain(
+      'text = local.launch_url != null ? local.launch_url : ""',
+    );
+    expect(outputsSource).toContain("value       = local.launch_url");
+    expect(outputsSource).toContain("value       = local.api_base_url");
+    expect(outputsSource).toContain("value       = local.mcp_url");
+  });
 });
