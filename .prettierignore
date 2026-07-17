@@ -1,4 +1,5 @@
 dist/
+.bun-cache/
 .terraform/
 *.tf
 *.tfvars
