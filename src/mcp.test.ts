@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { MAX_STORAGE_FILE_BYTES } from "./mcp.ts";
-import worker from "./worker.ts";
+import worker, { createStorageWorker } from "./worker.ts";
 import type {
   Env,
   R2Bucket,
@@ -93,7 +93,6 @@ class MemoryBucket implements R2Bucket {
 function env(bucket: R2Bucket, token: string | undefined = MCP_TOKEN): Env {
   return {
     BUCKET: bucket,
-    STORAGE_TOKEN_SIGNING_KEY: "storage-object-signing-key",
     ...(token === undefined ? {} : { PUBLISHED_MCP_AUTH_TOKEN: token }),
   };
 }
@@ -144,7 +143,6 @@ describe("published storage MCP", () => {
     const bucket = new MemoryBucket();
     const missingConfig = await worker.fetch(rpcRequest("tools/list"), {
       BUCKET: bucket,
-      STORAGE_TOKEN_SIGNING_KEY: "storage-object-signing-key",
     });
     expect(missingConfig.status).toBe(503);
 
@@ -153,6 +151,37 @@ describe("published storage MCP", () => {
       env(bucket),
     );
     expect(wrong.status).toBe(401);
+  });
+
+  test("accepts an exact mcp.invoke Interface OAuth credential", async () => {
+    const interfaceWorker = createStorageWorker(async () =>
+      Response.json({
+        token_use: "interface_oauth",
+        sub: "principal_storage",
+        aud: "https://storage.example/mcp",
+        scope: "mcp.invoke",
+        takosumi: {
+          workspace_id: "workspace_a",
+          capsule_id: "capsule_storage",
+          interface_id: "interface_storage_mcp",
+          interface_binding_id: "binding_mcp",
+          interface_resolved_revision: 6,
+        },
+      }),
+    );
+    const response = await interfaceWorker.fetch(
+      rpcRequest("tools/list", undefined, "taksrv_storage_mcp"),
+      {
+        BUCKET: new MemoryBucket(),
+        APP_URL: "https://storage.example",
+        OIDC_ISSUER_URL: "https://accounts.example",
+        APP_WORKSPACE_ID: "workspace_a",
+        APP_CAPSULE_ID: "capsule_storage",
+        APP_MCP_INTERFACE_ID: "interface_storage_mcp",
+        APP_MCP_INTERFACE_RESOLVED_REVISION: "6",
+      },
+    );
+    expect(response.status).toBe(200);
   });
 
   test("advertises exactly the six storage tools with MCP annotations", async () => {
