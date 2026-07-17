@@ -33,6 +33,11 @@ output "object_bucket_name" {
   value       = local.r2_objects_bucket
 }
 
+output "cloudflare_account_id" {
+  description = "Cloudflare account id used by reviewed operator lifecycle actions. This is an ordinary non-secret infrastructure output."
+  value       = var.cloudflare_account_id
+}
+
 output "oidc_redirect_uri" {
   description = "OAuth redirect URI to register service-side when drive sign-in is enabled."
   value       = local.oidc_redirect_uri
