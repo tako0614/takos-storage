@@ -56,12 +56,8 @@ export interface R2Bucket {
 export interface Env {
   /** R2 bucket backing this workspace object store. */
   BUCKET: R2Bucket;
-  /** Shared HMAC signing key; Takosumi mints tokens with the same value. */
-  STORAGE_TOKEN_SIGNING_KEY: string;
-  /** Bearer credential protecting the published Streamable HTTP MCP server. */
+  /** Optional direct/self-host bearer for the published MCP server. */
   PUBLISHED_MCP_AUTH_TOKEN?: string;
-  /** Bearer credential for destructive storage administration operations. */
-  STORAGE_ADMIN_TOKEN?: string;
   /** Public URL of this service, when known. */
   APP_URL?: string;
 
@@ -76,6 +72,14 @@ export interface Env {
   OIDC_CLIENT_SECRET?: string;
   /** HMAC secret sealing the session + OAuth state cookies. */
   APP_SESSION_SECRET?: string;
-  /** Optional workspace id the session must be a member of. */
-  APP_SPACE_ID?: string;
+  /** Owning Workspace id for user membership and Interface OAuth evidence. */
+  APP_WORKSPACE_ID?: string;
+  /** Owning Capsule id required for Interface OAuth evidence. */
+  APP_CAPSULE_ID?: string;
+  /** Exact object Interface id and current resolved revision. */
+  APP_OBJECT_INTERFACE_ID?: string;
+  APP_OBJECT_INTERFACE_RESOLVED_REVISION?: string;
+  /** Exact MCP Interface id and current resolved revision. */
+  APP_MCP_INTERFACE_ID?: string;
+  APP_MCP_INTERFACE_RESOLVED_REVISION?: string;
 }
