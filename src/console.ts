@@ -44,14 +44,16 @@ const CATALOGS = {
     renameLabel: "New name",
     newFolderTitle: "New folder",
     newFolderLabel: "Folder name",
-    nameInvalid: "Names can't contain \"/\".",
+    nameInvalid: 'Names can\'t contain "/".',
     save: "OK",
     cancel: "Cancel",
     deleteTitle: "Delete forever?",
     deleteBody: "“{name}” will be deleted forever. This can’t be undone.",
-    deleteFolderBody: "“{name}” and the {count} files inside will be deleted forever. This can’t be undone.",
+    deleteFolderBody:
+      "“{name}” and the {count} files inside will be deleted forever. This can’t be undone.",
     deleteConfirm: "Delete",
-    renameFolderBody: "{count} files will be copied to the new name and removed.",
+    renameFolderBody:
+      "{count} files will be copied to the new name and removed.",
     loading: "Loading…",
     emptyTitle: "Your drive is empty",
     emptyBody: "Drop files here or use “New” to upload.",
@@ -109,12 +111,15 @@ const CATALOGS = {
     cancel: "キャンセル",
     deleteTitle: "完全に削除しますか？",
     deleteBody: "「{name}」を完全に削除します。この操作は元に戻せません。",
-    deleteFolderBody: "「{name}」と中の {count} 件のファイルを完全に削除します。この操作は元に戻せません。",
+    deleteFolderBody:
+      "「{name}」と中の {count} 件のファイルを完全に削除します。この操作は元に戻せません。",
     deleteConfirm: "削除",
-    renameFolderBody: "{count} 件のファイルを新しい名前へコピーして削除します。",
+    renameFolderBody:
+      "{count} 件のファイルを新しい名前へコピーして削除します。",
     loading: "読み込み中…",
     emptyTitle: "ドライブはまだ空です",
-    emptyBody: "ここにファイルをドロップするか、「新規」からアップロードしてください。",
+    emptyBody:
+      "ここにファイルをドロップするか、「新規」からアップロードしてください。",
     emptySearchTitle: "一致するファイルはありません",
     emptySearchBody: "別のキーワードで検索してください。",
     errLoad: "ファイルを読み込めませんでした。",

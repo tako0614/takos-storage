@@ -7,7 +7,12 @@ const baseInput =
   stringOutput(outputs, "url", "public_url", "launch_url") ??
   process.env.TAKOSUMI_CAPSULE_PUBLIC_URL ??
   "";
-const token = process.env.STORAGE_ACCESS_TOKEN ?? "";
+const interfaceTokens = {
+  read: process.env.TAKOSUMI_INTERFACE_OAUTH_READ_TOKEN ?? "",
+  write: process.env.TAKOSUMI_INTERFACE_OAUTH_WRITE_TOKEN ?? "",
+  list: process.env.TAKOSUMI_INTERFACE_OAUTH_LIST_TOKEN ?? "",
+  delete: process.env.TAKOSUMI_INTERFACE_OAUTH_DELETE_TOKEN ?? "",
+};
 const skipMutation = process.env.STORAGE_SKIP_MUTATION === "1";
 
 function fail(message: string): never {
@@ -65,37 +70,58 @@ await expectOk(healthUrl);
 const checks = ["root", "health"];
 
 if (!skipMutation) {
-  if (!token)
-    fail("STORAGE_ACCESS_TOKEN is required unless STORAGE_SKIP_MUTATION=1");
+  const missingPermissions = Object.entries(interfaceTokens)
+    .filter(([, token]) => !token)
+    .map(([permission]) => permission);
+  if (missingPermissions.length > 0) {
+    fail(
+      `Interface OAuth tokens are required unless STORAGE_SKIP_MUTATION=1; missing: ${missingPermissions.join(", ")}`,
+    );
+  }
   const prefix = process.env.STORAGE_SMOKE_PREFIX ?? `smoke/${Date.now()}/`;
   const key = `${prefix}object.txt`;
   const objectUrl = new URL(`/o/${encodeURIComponent(key)}`, baseUrl);
   const listUrl = new URL("/o", baseUrl);
   listUrl.searchParams.set("prefix", prefix);
-  const headers = { authorization: `Bearer ${token}` };
-
   await expectOk(objectUrl, {
     method: "PUT",
-    headers: { ...headers, "content-type": "text/plain; charset=utf-8" },
+    headers: {
+      authorization: `Bearer ${interfaceTokens.write}`,
+      "content-type": "text/plain; charset=utf-8",
+    },
     body: "takos-storage smoke",
   });
   checks.push("object.put");
-  const read = await expectOk(objectUrl, { headers });
+  const read = await expectOk(objectUrl, {
+    headers: { authorization: `Bearer ${interfaceTokens.read}` },
+  });
   if ((await read.text()) !== "takos-storage smoke")
     fail("stored object body did not round-trip");
   checks.push("object.get");
-  await expectOk(objectUrl, { method: "HEAD", headers });
+  await expectOk(objectUrl, {
+    method: "HEAD",
+    headers: { authorization: `Bearer ${interfaceTokens.read}` },
+  });
   checks.push("object.head");
-  const listing = (await (await expectOk(listUrl, { headers })).json()) as {
+  const listing = (await (
+    await expectOk(listUrl, {
+      headers: { authorization: `Bearer ${interfaceTokens.list}` },
+    })
+  ).json()) as {
     objects?: { key?: string }[];
   };
   if (!listing.objects?.some((object) => object.key === key)) {
     fail("stored object was not present in the prefix listing");
   }
   checks.push("object.list");
-  await expectOk(objectUrl, { method: "DELETE", headers });
+  await expectOk(objectUrl, {
+    method: "DELETE",
+    headers: { authorization: `Bearer ${interfaceTokens.delete}` },
+  });
   checks.push("object.delete");
-  const deleted = await fetch(objectUrl, { headers });
+  const deleted = await fetch(objectUrl, {
+    headers: { authorization: `Bearer ${interfaceTokens.read}` },
+  });
   if (deleted.status !== 404)
     fail(`deleted object remained readable: ${deleted.status}`);
   checks.push("object.cleanup");

@@ -4,6 +4,8 @@
  * artifact is auditable.
  */
 
+export {};
+
 const result = await Bun.build({
   entrypoints: ["src/worker.ts"],
   outdir: "dist",
