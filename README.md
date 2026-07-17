@@ -62,6 +62,8 @@ tofu apply \
   -var takosumi_mcp_interface_resolved_revision=1
 ```
 
+`public_url` と `takosumi_accounts_issuer_url` は path / query / fragment / userinfo を持たない HTTPS origin を指定します（末尾 `/` は正規化されます）。これにより Worker の `APP_URL`、Output の audience、Accounts の OAuth/UserInfo endpoint が常に同じ origin 契約を使います。
+
 deployed Worker では public URL、Accounts issuer、Workspace/Capsule、object/MCP Interface id と resolved revision が必須です。revision が変わったら service-side reconcile が module input を更新します。drive sign-in も有効化する場合は `takosumi_accounts_client_id` と operator-managed secret の `app_session_secret` を明示指定してください。module は credential を生成せず、credential を Output に返しません。
 
 ordinary outputs:
