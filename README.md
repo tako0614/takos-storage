@@ -67,6 +67,11 @@ ordinary outputs:
 - `service_runtime_name`, `service_runtime_resource_id`, `service_runtime_managed_by_opentofu`
 - `object_bucket_name`, `cloudflare_account_id`, `oidc_redirect_uri`
 
+[`install-options.json`](install-options.json) は、現在実行可能な Cloudflare OpenTofu module を選ぶための任意の
+`CapsuleSourceOptions` 表示ドキュメントです。Takosumi 専用 manifest ではなく、通常の Git URL + module path での
+直接インストールには不要です。この文書は、それを含む次の通常の安定版タグから利用できます。別クラウドの選択肢は、
+対応する実在 module を出荷したときだけ追加します。
+
 ## v0.2.x から v0.3.0 への移行
 
 v0.3.0 は旧 HMAC/static credential resources を削除します。最初の upgrade apply で旧 `random_id` state を destroy できるよう、`hashicorp/random = 3.9.0` は一リリースだけ upgrade bridge として残しています。新しい random resource は作りません。
