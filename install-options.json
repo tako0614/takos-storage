@@ -1,0 +1,20 @@
+{
+  "apiVersion": "install.takosumi.com/v1alpha1",
+  "kind": "CapsuleSourceOptions",
+  "metadata": {
+    "name": "takos-storage",
+    "title": "Takos Storage",
+    "description": "Choose a deployment target for Takos Storage."
+  },
+  "options": [
+    {
+      "id": "cloudflare",
+      "title": "Cloudflare",
+      "description": "Deploy the Cloudflare OpenTofu module.",
+      "source": {
+        "url": "https://github.com/tako0614/takos-storage.git",
+        "path": "."
+      }
+    }
+  ]
+}
