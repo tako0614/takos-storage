@@ -13,9 +13,9 @@
     "test": "bun test",
     "audit": "bun audit --audit-level=high",
     "check": "bunx tsc --noEmit",
-    "lint": "bun run eslint . --max-warnings=0",
-    "fmt": "bun run prettier --write .",
-    "fmt:check": "bun run prettier --check ."
+    "lint": "bunx eslint . --max-warnings=0",
+    "fmt": "bunx prettier --write .",
+    "fmt:check": "bunx prettier --check ."
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
