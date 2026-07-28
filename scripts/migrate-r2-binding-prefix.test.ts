@@ -217,6 +217,31 @@ test("generated Worker fails closed on a conflicting target or an out-of-prefix 
   });
 });
 
+test("generated Worker rejects a namespace-prefixed key above the R2 byte limit", async () => {
+  const token = "migration-token";
+  const suffix = "a".repeat(1_003);
+  const sourceKey = `legacy/${suffix}`;
+  const worker = await generatedWorker({
+    token,
+    legacyPrefix: "legacy/",
+    bindingId: "binding-with-prefix",
+  });
+  const bucket = new MigrationBucketFixture();
+  bucket.objects.set(sourceKey, {
+    body: new TextEncoder().encode("source"),
+    httpEtag: "source-etag",
+  });
+
+  const response = await invokeGeneratedWorker(worker, bucket, token);
+  expect(response.status).toBe(409);
+  expect(await response.json()).toMatchObject({
+    ok: false,
+    error: "target_key_too_long",
+    source: sourceKey,
+  });
+  expect(bucket.putCount).toBe(0);
+});
+
 test("migration preserves rollback data and removes its Worker after a partial-page failure", async () => {
   let removed = false;
   let invocation = 0;
@@ -322,4 +347,73 @@ test("migration rejects ambiguous prefixes before making network requests", asyn
     ),
   ).rejects.toThrow("unsafe");
   expect(called).toBe(false);
+});
+
+test("migration rejects a non-HTTPS provider API before sending its bearer", async () => {
+  let called = false;
+  await expect(
+    migrateLegacyBindingPrefix(
+      {
+        CLOUDFLARE_API_TOKEN: "token",
+        CLOUDFLARE_ACCOUNT_ID: "account",
+        TAKOS_STORAGE_R2_BUCKET_NAME: "bucket",
+        TAKOS_STORAGE_LEGACY_KEY_PREFIX: "workspace/a",
+        TAKOS_STORAGE_INTERFACE_BINDING_ID: "binding-a",
+        TAKOS_STORAGE_MIGRATION_API_BASE_URL:
+          "http://provider.example/client/v4",
+      },
+      async () => {
+        called = true;
+        return api();
+      },
+    ),
+  ).rejects.toThrow("absolute HTTPS URL");
+  expect(called).toBe(false);
+});
+
+test("migration bearer requests never follow redirects", async () => {
+  const redirects: Array<RequestRedirect | undefined> = [];
+  await expect(
+    migrateLegacyBindingPrefix(
+      {
+        CLOUDFLARE_API_TOKEN: "token",
+        CLOUDFLARE_ACCOUNT_ID: "account",
+        TAKOS_STORAGE_R2_BUCKET_NAME: "bucket",
+        TAKOS_STORAGE_LEGACY_KEY_PREFIX: "workspace/a",
+        TAKOS_STORAGE_INTERFACE_BINDING_ID: "binding-a",
+      },
+      async (_input, init) => {
+        redirects.push(init?.redirect);
+        return new Response(null, {
+          status: 302,
+          headers: { location: "https://attacker.example/steal" },
+        });
+      },
+    ),
+  ).rejects.toThrow();
+  expect(redirects.length).toBeGreaterThan(0);
+  expect(redirects.every((redirect) => redirect === "manual")).toBe(true);
+});
+
+test("migration rejects an unsafe workers.dev subdomain before sending its temporary bearer", async () => {
+  const calls: string[] = [];
+  await expect(
+    migrateLegacyBindingPrefix(
+      {
+        CLOUDFLARE_API_TOKEN: "token",
+        CLOUDFLARE_ACCOUNT_ID: "account",
+        TAKOS_STORAGE_R2_BUCKET_NAME: "bucket",
+        TAKOS_STORAGE_LEGACY_KEY_PREFIX: "workspace/a",
+        TAKOS_STORAGE_INTERFACE_BINDING_ID: "binding-a",
+      },
+      async (input) => {
+        calls.push(input instanceof Request ? input.url : input.toString());
+        return api({
+          result: { subdomain: "fixture@attacker.example/path" },
+        });
+      },
+    ),
+  ).rejects.toThrow("one valid DNS label");
+  expect(calls).toHaveLength(1);
+  expect(calls[0]).toContain("api.cloudflare.com");
 });

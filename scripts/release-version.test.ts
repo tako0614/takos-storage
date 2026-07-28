@@ -1,22 +1,39 @@
 import { describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 
-const [packageSource, moduleSource, outputsSource] = await Promise.all([
-  readFile(new URL("../package.json", import.meta.url), "utf8"),
-  readFile(new URL("../main.tf", import.meta.url), "utf8"),
-  readFile(new URL("../outputs.tf", import.meta.url), "utf8"),
-]);
+const [packageSource, moduleSource, takoformModuleSource, outputsSource] =
+  await Promise.all([
+    readFile(new URL("../package.json", import.meta.url), "utf8"),
+    readFile(new URL("../main.tf", import.meta.url), "utf8"),
+    readFile(new URL("../deploy/takoform/main.tf", import.meta.url), "utf8"),
+    readFile(new URL("../outputs.tf", import.meta.url), "utf8"),
+  ]);
 
 const packageVersion = (JSON.parse(packageSource) as { version: string })
   .version;
 
 describe("release version", () => {
-  test("keeps the OpenTofu artifact default aligned", () => {
+  test("requires an explicitly reviewed primary artifact and keeps the Takoform declaration aligned", () => {
     const releaseVariable = moduleSource.match(
       /variable\s+"worker_release_tag"\s*\{([\s\S]*?)\n\}/,
     )?.[1];
     expect(releaseVariable).toBeDefined();
-    expect(releaseVariable).toContain(`default     = "v${packageVersion}"`);
+    expect(releaseVariable).toContain('default     = ""');
+    expect(moduleSource).not.toContain(
+      `/releases/download/v${packageVersion}/takosumi-artifact.json`,
+    );
+
+    const takoformReleaseVariable = takoformModuleSource.match(
+      /variable\s+"worker_release_tag"\s*\{([\s\S]*?)\n\}/,
+    )?.[1];
+    expect(takoformReleaseVariable).toBeDefined();
+    expect(takoformReleaseVariable).toContain(
+      `default     = "v${packageVersion}"`,
+    );
+    expect(takoformModuleSource).toContain(
+      `/releases/download/v${packageVersion}/worker.js`,
+    );
+    expect(takoformModuleSource).toMatch(/default\s+=\s+"sha256:[a-f0-9]{64}"/);
     expect(outputsSource).not.toContain("app_deployment");
     expect(outputsSource).not.toContain("service_exports");
   });

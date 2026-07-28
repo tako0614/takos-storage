@@ -237,6 +237,19 @@ describe("takos-storage Interface OAuth worker", () => {
     expect(body.objects.map((entry) => entry.key)).toEqual(["docs/a.txt"]);
   });
 
+  test("rejects keys whose binding-prefixed UTF-8 representation exceeds R2", async () => {
+    const bucket = new MemoryBucket();
+    const response = await worker.fetch(
+      request("PUT", `/o/${"a".repeat(1000)}`, {
+        token: TOKENS.write,
+        body: "x",
+      }),
+      makeEnv(bucket),
+    );
+    expect(response.status).toBe(400);
+    expect(bucket.store.size).toBe(0);
+  });
+
   test("fails closed when Interface OAuth owner configuration is absent", async () => {
     const response = await worker.fetch(
       request("GET", "/o/a.txt", { token: TOKENS.read }),

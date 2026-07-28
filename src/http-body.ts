@@ -2,6 +2,24 @@
 
 export const MAX_STORED_OBJECT_BYTES = 50 * 1024 * 1024;
 
+const CONTENT_TYPE_PATTERN =
+  /^[!#$%&'*+.^_`|~0-9A-Za-z-]+\/[!#$%&'*+.^_`|~0-9A-Za-z-]+(?:[ \t]*;[\x20-\x7e]*)?$/u;
+
+/**
+ * The stored media type is uploader-controlled and travels back out on read,
+ * so anything that is not a well-formed media type degrades to the inert
+ * default instead of reaching a response header.
+ */
+export function storedContentType(value: string | null | undefined): string {
+  const candidate = (value ?? "").trim();
+  if (candidate.length === 0 || candidate.length > 255) {
+    return "application/octet-stream";
+  }
+  return CONTENT_TYPE_PATTERN.test(candidate)
+    ? candidate
+    : "application/octet-stream";
+}
+
 export class RequestBodyTooLargeError extends Error {
   constructor() {
     super(`request body exceeds ${MAX_STORED_OBJECT_BYTES} bytes`);

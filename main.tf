@@ -98,7 +98,7 @@ variable "env" {
         "PUBLISHED_MCP_AUTH_TOKEN",
         "OIDC_ISSUER_URL",
         "OIDC_CLIENT_ID",
-        "APP_AUTH_REQUIRED",
+        "ALLOW_UNAUTHENTICATED_DRIVE",
         "APP_WORKSPACE_ID",
         "APP_CAPSULE_ID",
       ], name)
@@ -116,6 +116,12 @@ variable "takosumi_accounts_issuer_url" {
     condition     = trimspace(var.takosumi_accounts_issuer_url) == "" || can(regex("^https://([A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?|\\[[0-9A-Fa-f:]+\\])(:[0-9]{1,5})?/?$", trimspace(var.takosumi_accounts_issuer_url)))
     error_message = "takosumi_accounts_issuer_url must be empty or a bare HTTPS origin with no userinfo, path, query, or fragment."
   }
+}
+
+variable "allow_unauthenticated_drive" {
+  description = "Serve the drive UI and /api/drive with no sign-in at all. Off by default: the drive is authenticated unless an operator deliberately publishes it to the whole internet, including anonymous upload and delete."
+  type        = bool
+  default     = false
 }
 
 variable "takosumi_accounts_client_id" {
@@ -173,15 +179,15 @@ variable "enable_cloudflare_worker_script" {
 }
 
 variable "worker_bundle_path" {
-  description = "Local path to a source-built Worker module JS file. Used only when worker_release_tag and worker_bundle_url are both empty."
+  description = "Explicit local path to a reviewed, source-built Worker module JS file. Exactly one of worker_bundle_path or worker_bundle_url is required when deploying the Worker."
   type        = string
-  default     = "dist/worker.js"
+  default     = ""
 }
 
 variable "worker_release_tag" {
-  description = "GitHub release tag whose takosumi-artifact.json selects the default Worker bundle and SHA-256. Set empty to use worker_bundle_path."
+  description = "Optional GitHub release tag used to cross-check an explicitly selected worker_bundle_url. No release artifact is selected implicitly."
   type        = string
-  default     = "v0.3.0"
+  default     = ""
 
   validation {
     condition     = trimspace(var.worker_release_tag) == "" || can(regex("^v[0-9]+\\.[0-9]+\\.[0-9]+([-+][0-9A-Za-z.-]+)?$", trimspace(var.worker_release_tag)))
@@ -201,7 +207,7 @@ variable "worker_bundle_url" {
 }
 
 variable "worker_bundle_sha256" {
-  description = "Expected SHA-256 of the Worker module JS. Accepts lowercase hex or sha256:<hex>. Required when worker_bundle_url is set."
+  description = "Expected SHA-256 of the explicitly selected Worker module JS. Accepts lowercase hex or sha256:<hex> and is required for both URL and local artifacts."
   type        = string
   default     = ""
 
@@ -257,16 +263,15 @@ locals {
   cloudflare_worker_enabled     = local.cloudflare_resources_enabled && var.enable_cloudflare_worker_script
   cloudflare_route_enabled      = local.cloudflare_worker_enabled && trimspace(var.cloudflare_route_zone_id) != "" && trimspace(var.cloudflare_route_pattern) != ""
   worker_release_tag            = trimspace(var.worker_release_tag)
-  worker_bundle_explicit_url    = trimspace(var.worker_bundle_url)
-  worker_bundle_uses_manifest   = local.cloudflare_worker_enabled && local.worker_bundle_explicit_url == "" && local.worker_release_tag != ""
-  worker_release_manifest       = local.worker_bundle_uses_manifest ? jsondecode(data.http.worker_release_manifest[0].response_body) : null
-  worker_bundle_url             = local.worker_bundle_explicit_url != "" ? local.worker_bundle_explicit_url : try(local.worker_release_manifest.artifact.url, "")
+  worker_bundle_url             = trimspace(var.worker_bundle_url)
+  worker_bundle_path            = trimspace(var.worker_bundle_path)
   worker_bundle_uses_url        = local.cloudflare_worker_enabled && local.worker_bundle_url != ""
-  worker_bundle_sha256_input    = trimspace(var.worker_bundle_sha256) != "" ? trimspace(var.worker_bundle_sha256) : (local.worker_bundle_uses_manifest ? try(local.worker_release_manifest.artifact.sha256, "") : "")
+  worker_bundle_uses_local      = local.cloudflare_worker_enabled && local.worker_bundle_path != ""
+  worker_bundle_sha256_input    = trimspace(var.worker_bundle_sha256)
   worker_bundle_expected_sha256 = startswith(local.worker_bundle_sha256_input, "sha256:") ? replace(local.worker_bundle_sha256_input, "sha256:", "") : local.worker_bundle_sha256_input
-  worker_bundle_local_path      = startswith(var.worker_bundle_path, "/") ? var.worker_bundle_path : "${path.module}/${var.worker_bundle_path}"
+  worker_bundle_local_path      = local.worker_bundle_path == "" ? null : (startswith(local.worker_bundle_path, "/") ? local.worker_bundle_path : "${path.module}/${local.worker_bundle_path}")
   worker_bundle_body            = local.worker_bundle_uses_url ? data.http.worker_bundle[0].response_body : null
-  worker_bundle_content_sha256  = local.cloudflare_worker_enabled ? (local.worker_bundle_uses_url ? sha256(data.http.worker_bundle[0].response_body) : (local.worker_bundle_uses_manifest ? null : filesha256(local.worker_bundle_local_path))) : null
+  worker_bundle_content_sha256  = local.worker_bundle_uses_url ? sha256(data.http.worker_bundle[0].response_body) : (local.worker_bundle_uses_local ? filesha256(local.worker_bundle_local_path) : null)
 
   resource_prefix  = var.project_name
   public_subdomain = trimspace(var.public_subdomain) != "" ? trimspace(var.public_subdomain) : local.resource_prefix
@@ -289,22 +294,6 @@ locals {
   oidc_redirect_uri       = local.launch_url != null ? "${local.launch_url}/api/auth/callback/takos" : null
 
   r2_objects_bucket = "${local.resource_prefix}-objects"
-}
-
-data "http" "worker_release_manifest" {
-  count              = local.worker_bundle_uses_manifest ? 1 : 0
-  url                = "https://github.com/tako0614/takos-storage/releases/download/${local.worker_release_tag}/takosumi-artifact.json"
-  request_timeout_ms = 30000
-
-  request_headers = {
-    Accept = "application/json"
-  }
-
-  retry {
-    attempts     = 3
-    min_delay_ms = 500
-    max_delay_ms = 5000
-  }
 }
 
 data "http" "worker_bundle" {
@@ -334,7 +323,7 @@ resource "cloudflare_workers_script" "worker" {
   account_id          = var.cloudflare_account_id
   script_name         = local.runtime_name
   content             = local.worker_bundle_uses_url ? sensitive(local.worker_bundle_body) : null
-  content_file        = local.worker_bundle_uses_url ? null : local.worker_bundle_local_path
+  content_file        = local.worker_bundle_uses_local ? local.worker_bundle_local_path : null
   content_sha256      = local.worker_bundle_content_sha256
   main_module         = var.worker_main_module
   compatibility_date  = var.worker_compatibility_date
@@ -379,16 +368,18 @@ resource "cloudflare_workers_script" "worker" {
         text = local.capsule_id
       },
     ] : [],
+    var.allow_unauthenticated_drive ? [
+      {
+        type = "plain_text"
+        name = "ALLOW_UNAUTHENTICATED_DRIVE"
+        text = "1"
+      },
+    ] : [],
     local.app_auth_enabled ? [
       {
         type = "plain_text"
         name = "OIDC_CLIENT_ID"
         text = trimspace(var.takosumi_accounts_client_id)
-      },
-      {
-        type = "plain_text"
-        name = "APP_AUTH_REQUIRED"
-        text = "1"
       },
       {
         type = "secret_text"
@@ -432,24 +423,29 @@ resource "cloudflare_workers_script" "worker" {
       error_message = "app_session_secret is required when Takosumi Accounts drive sign-in is enabled."
     }
 
+    # The drive is authenticated by default, so an install that cannot sign
+    # anyone in must be rejected here rather than serve anonymous list /
+    # download / upload / delete.
     precondition {
-      condition = !local.worker_bundle_uses_manifest || (
-        try(local.worker_release_manifest.kind, "") == "takosumi.worker-artifact@v1" &&
-        try(local.worker_release_manifest.app, "") == "takos-storage" &&
-        try(local.worker_release_manifest.releaseTag, "") == local.worker_release_tag &&
-        local.worker_bundle_uses_url
+      condition = !local.cloudflare_worker_enabled || var.allow_unauthenticated_drive || (
+        local.app_auth_enabled && local.provided_session_secret != ""
       )
-      error_message = "worker_release_tag must resolve to a valid takos-storage takosumi.worker-artifact@v1 manifest."
+      error_message = "Drive sign-in requires takosumi_accounts_issuer_url, takosumi_accounts_client_id, and app_session_secret. Set allow_unauthenticated_drive = true only to publish an anonymous read/write drive on purpose."
     }
 
     precondition {
-      condition     = !local.worker_bundle_uses_url || (local.worker_bundle_expected_sha256 != "" && local.worker_bundle_expected_sha256 == local.worker_bundle_content_sha256)
-      error_message = "worker_bundle_sha256 is required for worker_bundle_url and must match the downloaded artifact."
+      condition     = !local.cloudflare_worker_enabled || (local.worker_bundle_uses_url != local.worker_bundle_uses_local)
+      error_message = "Exactly one explicit Worker artifact is required: set worker_bundle_url or worker_bundle_path, but not both."
     }
 
     precondition {
-      condition     = local.worker_bundle_uses_url || local.worker_bundle_uses_manifest || local.worker_bundle_expected_sha256 == "" || local.worker_bundle_expected_sha256 == local.worker_bundle_content_sha256
-      error_message = "worker_bundle_sha256 does not match worker_bundle_path."
+      condition     = !local.cloudflare_worker_enabled || (local.worker_bundle_expected_sha256 != "" && local.worker_bundle_expected_sha256 == local.worker_bundle_content_sha256)
+      error_message = "worker_bundle_sha256 is required and must match the explicitly selected Worker artifact."
+    }
+
+    precondition {
+      condition     = local.worker_release_tag == "" || (local.worker_bundle_uses_url && strcontains(local.worker_bundle_url, "/releases/download/${local.worker_release_tag}/"))
+      error_message = "worker_bundle_url must select the exact worker_release_tag when worker_release_tag is set."
     }
 
   }

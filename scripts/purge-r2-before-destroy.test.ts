@@ -9,6 +9,23 @@ function api(payload: Record<string, unknown> = {}): Response {
   return Response.json({ success: true, ...payload });
 }
 
+function purgeConfirmation(accountId: string, bucketName: string) {
+  return {
+    TAKOS_STORAGE_PURGE_CONFIRMATION: `PURGE ${accountId}/${bucketName}`,
+  } as const;
+}
+
+function managedLifecycleConfirmation(accountId: string, bucketName: string) {
+  return {
+    TAKOSUMI_LIFECYCLE_ACTION_PHASE: "pre_destroy",
+    TAKOSUMI_LIFECYCLE_ACTION_ID: "empty-r2-before-destroy-v1",
+    TAKOSUMI_OUTPUTS_JSON: JSON.stringify({
+      cloudflare_account_id: { value: accountId },
+      object_bucket_name: { value: bucketName },
+    }),
+  } as const;
+}
+
 describe("storage R2 pre-destroy", () => {
   test("reads the reviewed output, purges bounded pages, and removes the cleaner", async () => {
     const calls: Array<{ url: string; method: string }> = [];
@@ -51,6 +68,7 @@ describe("storage R2 pre-destroy", () => {
         }),
         TAKOS_STORAGE_CLOUDFLARE_API_MODE: "direct",
         CLOUDFLARE_API_BASE_URL: "https://api.example.test/client/v4/",
+        ...purgeConfirmation("account-a", "workspace-storage-objects"),
       },
       fetchImpl,
       async () => undefined,
@@ -98,6 +116,7 @@ describe("storage R2 pre-destroy", () => {
         TAKOSUMI_OUTPUTS_JSON: JSON.stringify({
           object_bucket_name: { value: "direct-bucket", type: "string" },
         }),
+        ...purgeConfirmation("account-a", "direct-bucket"),
       },
       fetchImpl,
       async () => undefined,
@@ -130,6 +149,7 @@ describe("storage R2 pre-destroy", () => {
           CLOUDFLARE_ACCOUNT_ID: "account-a",
           TAKOS_STORAGE_CLOUDFLARE_API_MODE: "direct",
           TAKOS_STORAGE_R2_BUCKET_NAME: "bucket-a",
+          ...purgeConfirmation("account-a", "bucket-a"),
         },
         fetchImpl,
         async () => undefined,
@@ -162,6 +182,7 @@ describe("storage R2 pre-destroy", () => {
           CLOUDFLARE_ACCOUNT_ID: "account-a",
           TAKOS_STORAGE_CLOUDFLARE_API_MODE: "direct",
           TAKOS_STORAGE_R2_BUCKET_NAME: "bucket-a",
+          ...purgeConfirmation("account-a", "bucket-a"),
         },
         fetchImpl,
         async () => undefined,
@@ -196,6 +217,7 @@ describe("storage R2 pre-destroy", () => {
           CLOUDFLARE_API_TOKEN: "provider-token",
           CLOUDFLARE_ACCOUNT_ID: "account-a",
           TAKOS_STORAGE_R2_BUCKET_NAME: "bucket-a",
+          ...purgeConfirmation("account-a", "bucket-a"),
           TAKOSUMI_PROVIDER_CONFIGS_JSON: JSON.stringify({
             format: "takosumi.provider-configurations@v1",
             providers: [
@@ -243,10 +265,7 @@ describe("storage R2 pre-destroy", () => {
     const result = await purgeR2BucketBeforeDestroy(
       {
         CLOUDFLARE_API_TOKEN: "provider-token",
-        TAKOSUMI_OUTPUTS_JSON: JSON.stringify({
-          cloudflare_account_id: { value: "virtual-account" },
-          object_bucket_name: { value: "managed-bucket" },
-        }),
+        ...managedLifecycleConfirmation("virtual-account", "managed-bucket"),
         TAKOSUMI_PROVIDER_CONFIGS_JSON: JSON.stringify({
           format: "takosumi.provider-configurations@v1",
           providers: [
@@ -278,6 +297,54 @@ describe("storage R2 pre-destroy", () => {
     ).toBe(true);
     expect(urls.some((url) => url.includes("workers/subdomain"))).toBe(false);
     expect(urls.some((url) => url.includes("api.cloudflare.com"))).toBe(false);
+  });
+
+  test("does not trust lifecycle confirmation in explicit direct mode", async () => {
+    let called = false;
+    await expect(
+      purgeR2BucketBeforeDestroy(
+        {
+          CLOUDFLARE_API_TOKEN: "provider-token",
+          TAKOS_STORAGE_CLOUDFLARE_API_MODE: "direct",
+          ...managedLifecycleConfirmation("account-a", "bucket-a"),
+        },
+        async () => {
+          called = true;
+          return api();
+        },
+      ),
+    ).rejects.toThrow(
+      "TAKOS_STORAGE_PURGE_CONFIRMATION must exactly equal PURGE account-a/bucket-a",
+    );
+    expect(called).toBe(false);
+  });
+
+  test("rejects managed lifecycle confirmation whose reviewed outputs do not match", async () => {
+    let called = false;
+    await expect(
+      purgeR2BucketBeforeDestroy(
+        {
+          CLOUDFLARE_API_TOKEN: "provider-token",
+          CLOUDFLARE_ACCOUNT_ID: "other-account",
+          ...managedLifecycleConfirmation("reviewed-account", "bucket-a"),
+          TAKOSUMI_PROVIDER_CONFIGS_JSON: JSON.stringify({
+            format: "takosumi.provider-configurations@v1",
+            providers: [
+              {
+                provider: "registry.opentofu.org/cloudflare/cloudflare",
+                alias: null,
+                configuration: {},
+              },
+            ],
+          }),
+        },
+        async () => {
+          called = true;
+          return api();
+        },
+      ),
+    ).rejects.toThrow("matching reviewed outputs");
+    expect(called).toBe(false);
   });
 
   test("rejects a missing provider envelope before any provider call", async () => {
@@ -316,6 +383,7 @@ describe("storage R2 pre-destroy", () => {
               },
             ],
           }),
+          ...purgeConfirmation("account-a", "bucket-a"),
         },
         async () => {
           called = true;
@@ -345,6 +413,7 @@ describe("storage R2 pre-destroy", () => {
               },
             ],
           }),
+          ...purgeConfirmation("virtual-account", "bucket-a"),
         },
         async () => {
           called = true;
@@ -431,11 +500,83 @@ describe("storage R2 pre-destroy", () => {
               },
             ],
           }),
+          ...purgeConfirmation("virtual-account", "bucket-a"),
         },
         fetchImpl,
         async () => undefined,
       ),
     ).rejects.toThrow("did not return the temporary cleaner invocation origin");
     expect(removed).toBe(true);
+  });
+
+  test("requires an exact account and bucket confirmation before purge", async () => {
+    let called = false;
+    await expect(
+      purgeR2BucketBeforeDestroy(
+        {
+          CLOUDFLARE_API_TOKEN: "provider-token",
+          CLOUDFLARE_ACCOUNT_ID: "account-a",
+          TAKOS_STORAGE_R2_BUCKET_NAME: "bucket-a",
+          TAKOS_STORAGE_CLOUDFLARE_API_MODE: "direct",
+          TAKOS_STORAGE_PURGE_CONFIRMATION: "PURGE account-a/other-bucket",
+        },
+        async () => {
+          called = true;
+          return api();
+        },
+      ),
+    ).rejects.toThrow("must exactly equal PURGE account-a/bucket-a");
+    expect(called).toBe(false);
+  });
+
+  test("never follows a redirect with a provider or purge bearer", async () => {
+    const redirects: Array<RequestRedirect | undefined> = [];
+    await expect(
+      purgeR2BucketBeforeDestroy(
+        {
+          CLOUDFLARE_API_TOKEN: "provider-token",
+          CLOUDFLARE_ACCOUNT_ID: "account-a",
+          TAKOS_STORAGE_R2_BUCKET_NAME: "bucket-a",
+          TAKOS_STORAGE_CLOUDFLARE_API_MODE: "direct",
+          ...purgeConfirmation("account-a", "bucket-a"),
+        },
+        async (_input, init) => {
+          redirects.push(init?.redirect);
+          return new Response(null, {
+            status: 302,
+            headers: { location: "https://attacker.example/steal" },
+          });
+        },
+        async () => undefined,
+      ),
+    ).rejects.toThrow();
+    expect(redirects.length).toBeGreaterThan(0);
+    expect(redirects.every((redirect) => redirect === "manual")).toBe(true);
+  });
+
+  test("rejects an unsafe workers.dev subdomain before sending its temporary bearer", async () => {
+    const calls: string[] = [];
+    await expect(
+      purgeR2BucketBeforeDestroy(
+        {
+          CLOUDFLARE_API_TOKEN: "provider-token",
+          CLOUDFLARE_ACCOUNT_ID: "account-a",
+          TAKOS_STORAGE_R2_BUCKET_NAME: "bucket-a",
+          TAKOS_STORAGE_CLOUDFLARE_API_MODE: "direct",
+          ...purgeConfirmation("account-a", "bucket-a"),
+        },
+        async (input) => {
+          calls.push(input instanceof Request ? input.url : input.toString());
+          return api({
+            result: { subdomain: "fixture@attacker.example/path" },
+          });
+        },
+      ),
+    ).rejects.toThrow("one valid DNS label");
+    expect(calls.length).toBeGreaterThan(0);
+    expect(
+      calls.every((url) => url.startsWith("https://api.cloudflare.com/")),
+    ).toBeTrue();
+    expect(calls.some((url) => url.includes("attacker.example"))).toBeFalse();
   });
 });

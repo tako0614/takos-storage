@@ -22,11 +22,11 @@ import {
   conditionalWriteHeaders,
   RequestBodyTooLargeError,
 } from "./http-body.ts";
+import { physicalObjectKeyFits } from "./storage-key.ts";
 
 const OBJECT_PREFIX = "/o/";
 const INTERFACE_BINDING_PREFIX = "interface-bindings/";
 const MAX_CURSOR_LENGTH = 4_096;
-const MAX_OBJECT_KEY_LENGTH = 1_024;
 const ICON_PATH = "/icons/takos-storage.svg";
 
 function json(body: unknown, status = 200): Response {
@@ -75,18 +75,18 @@ function bindingStoragePrefix(interfaceBindingId: string): string {
   return `${INTERFACE_BINDING_PREFIX}${encodeURIComponent(interfaceBindingId)}/`;
 }
 
-function validRelativeKey(value: string): boolean {
+function validRelativeKey(storagePrefix: string, value: string): boolean {
   return (
     value.length > 0 &&
-    value.length <= MAX_OBJECT_KEY_LENGTH &&
+    physicalObjectKeyFits(storagePrefix, value) &&
     !value.startsWith("/") &&
     !value.includes("\0")
   );
 }
 
-function validRelativePrefix(value: string): boolean {
+function validRelativePrefix(storagePrefix: string, value: string): boolean {
   return (
-    value.length <= MAX_OBJECT_KEY_LENGTH &&
+    physicalObjectKeyFits(storagePrefix, value) &&
     !value.startsWith("/") &&
     !value.includes("\0")
   );
@@ -175,7 +175,7 @@ async function fetchHandler(
 
   if (isListPath) {
     const requested = url.searchParams.get("prefix") ?? "";
-    if (!validRelativePrefix(requested)) {
+    if (!validRelativePrefix(storagePrefix, requested)) {
       return json({ error: "invalid_prefix" }, 400);
     }
     const cursor = url.searchParams.get("cursor");
@@ -209,7 +209,8 @@ async function fetchHandler(
   } catch {
     return json({ error: "invalid_key" }, 400);
   }
-  if (!validRelativeKey(key)) return json({ error: "invalid_key" }, 400);
+  if (!validRelativeKey(storagePrefix, key))
+    return json({ error: "invalid_key" }, 400);
   const physicalKey = `${storagePrefix}${key}`;
 
   if (expectedPermission === "storage.object.read") {

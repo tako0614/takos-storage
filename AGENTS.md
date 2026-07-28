@@ -1,24 +1,47 @@
-# AGENTS.md — takos-storage
+# AGENTS.md
 
-Standalone installable Capsule providing an object-store HTTP API, browser drive, and storage MCP. It is a sibling product, not a Takos internal service and not Takosumi Cloud's closed storage implementation.
+> このファイルは `takos-control/engineering.policy.json` と `ecosystem.repos.json` から generator v1 で生成されています。手編集しないでください。
 
-## Boundaries
+## Repository
 
-- The repository root is a plain OpenTofu module plus a prebuilt Worker artifact. Do not add a Takosumi manifest, reserved Output schema, or Takosumi provider wrapper.
-- Takosumi owns Interface / InterfaceBinding declarations service-side. This module returns ordinary infrastructure and endpoint Outputs only.
-- Managed runtime calls use invocation-only `taksrv_` Interface OAuth credentials. Validate exact audience, one exact permission, Workspace, Capsule, and Principal subject plus well-formed Interface/InterfaceBinding/revision evidence through current-state Accounts UserInfo.
-- Public origin and owner ids come only from service-side module inputs; never derive them from caller-controlled request metadata. Interface ids, Binding ids, and resolved revisions are current UserInfo evidence, not static module inputs or Worker env.
-- Each object InterfaceBinding has a private `interface-bindings/<encoded-binding-id>/` physical namespace.
-- Never reintroduce app-local `tksvc_` HMAC grants, shared signing keys, credential Outputs, or a standing destructive admin endpoint.
-- Direct/self-host MCP may use an explicitly configured `PUBLISHED_MCP_AUTH_TOKEN`; it is never generated or output. Managed MCP uses `mcp.invoke` Interface OAuth.
-- R2 migration and pre-destroy cleanup are explicit operator lifecycle actions using provider credentials outside the Worker.
+- Scope: Standalone installable object-store Capsule with HTTP, browser, and MCP surfaces.
+- Repository kind: `product`
+- Direct sibling dependencies: なし
+- Repository gate: `bun run check`
+- Canonical docs: [README.md](README.md), [deploy/takoform/README.md](deploy/takoform/README.md)
 
-## Checks
+## Ownership
 
-- `bun test`
-- `bun run check`
-- `bun run build:worker`
-- `tofu fmt -check -recursive`
-- `tofu init -backend=false -lockfile=readonly && tofu validate`
+- Owns: Object-store HTTP API and R2-backed data / Browser drive API and UI / Storage MCP and direct and managed OpenTofu graphs
+- Does not own: Takos internal storage / Takosumi Cloud closed storage / Takosumi Interface, binding, or credential authority
+- Hazards: Streaming object and inline MCP transports have different size limits. / Legacy-key migration and non-empty R2 purge are reviewed lifecycle actions. / This product does not implement S3 SigV4 compatibility.
 
-Do not commit `dist/`, local `.terraform/`, provider credentials, environment files, certificates, or secret values.
+## Required workflow
+
+- repo固有の挙動・契約・architectureは、このrepo自身のsourceとdocsを正本にします。共通工学ルールをこのrepoで再定義しません。
+- 通常変更はこのrepo内に閉じます。横断変更はtask ledgerに対象repoと順序を宣言し、unrelatedなdirty workを変更・stage・commitしません。
+- handoff前に `bun run check` を実行します。これはread-onlyで、`format-check`, `lint-or-static-analysis`, `type-or-compile`, `portable-tests`, `portable-build` を完全に検証し、未実装項目をskipしてはいけません。
+- formatの書き換えは明示的な `bun run fmt` だけで行い、checkやCIからsourceを書き換えません。
+- task ledgerが必要な条件: The change modifies more than one repository. / The work changes production or release behavior. / The work changes a persisted schema or migrates data. / The work changes security, identity, credentials, authorization, billing, or authority. / The work destructively changes data or repository history.
+- secret、credential、production記録、private keyをrepoへcommitしません。
+
+## Deploy
+
+- このrepoがproduction targetを持つなら、入口は `bun run deploy` 一つです。無ければ作ります。承認待ちの列も、登録する先もありません。entrypointは副作用なしの `--contract` で、自分に立つtriggerと各obligationの果たし方を宣言します。
+- 実行するかどうかはoperatorの判断です。task ledger、branch名、green checkのいずれもdeployを承認しません。逆に、どれも欠けているからといってdeployが禁止されるわけでもありません。
+- どのsurfaceも次のobligationを負います。
+
+  - **provenance**: The published bytes belong to one reviewed commit, are built from that worktree, and the commit and artifact digest are recorded. Whatever validates them must cover those bytes.
+  - **post-conditions**: After publishing, state how you know the thing works for a real user, and confirm it.
+  - **reversal**: State how to get back. If you cannot get back, say so and name the forward-repair plan instead.
+  - **failure-handling**: State what the entrypoint prints on failure and what it refuses to do. Raw diagnostics, no blind retry, and a clear split between failing before and after the target was touched.
+
+- 次のtriggerが立つと義務が増えます。判別できないものはirreversible扱いです。
+
+  - **irreversible** (The step leaves the previous artifact unable to serve again: a schema or data migration, a topology change, or anything that rewrites durable state.) → pre-mutation-proof, independent-review
+  - **authority** (The step moves money, identity, authentication, authorization, or the deploy mechanism itself.) → independent-review
+  - **published-identity** (Publication mints a version, digest, or tag that consumers pin.) → no-overwrite
+  - **asynchronous** (Publication completes through an external review or staged delivery the deploy does not control, such as an app store.) → halt
+
+- 果たし方は各surfaceが自分の言葉で決めます。中央は義務を決め、機構は決めません。宣言を弱められませんが、強める分には自由です。
+- 利用者/operatorが自分の環境へself-host deployすることは別authorityで、このruleの対象外です。

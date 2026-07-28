@@ -3,10 +3,12 @@
  *
  * A dependency-free port of the ecosystem app-auth pattern (Takosumi
  * Accounts authorization-code + PKCE, HMAC-sealed cookies) for a plain
- * fetch-handler Worker. Auth is OFF unless APP_AUTH_REQUIRED is set, so a
- * bare self-host apply stays usable; when on, the drive UI and /api/drive
+ * fetch-handler Worker. Auth is ON by default: the drive UI and /api/drive
  * routes require a signed session cookie, and — when APP_WORKSPACE_ID is set —
- * membership of that workspace.
+ * membership of that workspace. An install that omits the Accounts wiring
+ * fails loudly with 503 (see appAuthMisconfigured) instead of serving the
+ * drive anonymously; a deliberately public drive takes the explicit
+ * ALLOW_UNAUTHENTICATED_DRIVE opt-in.
  *
  * The `/o` object API is NOT covered here: runtime consumers use Interface
  * OAuth credentials independently of browser sessions.
@@ -38,14 +40,19 @@ function envValue(env: Env, name: keyof Env): string | undefined {
   return typeof value === "string" && value.trim() !== "" ? value : undefined;
 }
 
+/**
+ * Fail closed: a missing or unparsable flag must never be read as "the drive
+ * is public", so only an explicit affirmative opt-in drops the session gate.
+ */
 export function appAuthRequired(env: Env): boolean {
-  const value = envValue(env, "APP_AUTH_REQUIRED");
-  return value ? ["1", "true", "yes"].includes(value.toLowerCase()) : false;
+  const value = envValue(env, "ALLOW_UNAUTHENTICATED_DRIVE");
+  return !(value && ["1", "true", "yes"].includes(value.toLowerCase()));
 }
 
 function authConfig(env: Env) {
   return {
     required: appAuthRequired(env),
+    appUrl: envValue(env, "APP_URL"),
     issuer: envValue(env, "OIDC_ISSUER_URL"),
     clientId: envValue(env, "OIDC_CLIENT_ID"),
     clientSecret: envValue(env, "OIDC_CLIENT_SECRET"),
@@ -54,10 +61,35 @@ function authConfig(env: Env) {
   };
 }
 
+function canonicalBareHttpsOrigin(
+  value: string | undefined,
+  name: "APP_URL" | "OIDC_ISSUER_URL",
+): string {
+  if (!value) throw new Error(`${name} is required`);
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(`${name} must be a bare HTTPS origin`);
+  }
+  if (
+    url.protocol !== "https:" ||
+    url.username !== "" ||
+    url.password !== "" ||
+    (url.pathname !== "/" && url.pathname !== "") ||
+    url.search !== "" ||
+    url.hash !== ""
+  ) {
+    throw new Error(`${name} must be a bare HTTPS origin`);
+  }
+  return url.origin;
+}
+
 function authMissing(env: Env): string[] {
   const config = authConfig(env);
   if (!config.required) return [];
   const requiredValues: Array<[string, string | undefined]> = [
+    ["APP_URL", config.appUrl],
     ["OIDC_ISSUER_URL", config.issuer],
     ["OIDC_CLIENT_ID", config.clientId],
     ["APP_SESSION_SECRET", config.sessionSecret],
@@ -67,11 +99,31 @@ function authMissing(env: Env): string[] {
 
 export function appAuthMisconfigured(env: Env): Response | null {
   const missing = authMissing(env);
-  if (missing.length === 0) return null;
-  return Response.json(
-    { error: "app_auth_not_configured", missing },
-    { status: 503 },
-  );
+  if (missing.length > 0) {
+    return Response.json(
+      { error: "app_auth_not_configured", missing },
+      { status: 503 },
+    );
+  }
+  if (!appAuthRequired(env)) return null;
+  const config = authConfig(env);
+  const invalid: string[] = [];
+  for (const [name, value] of [
+    ["APP_URL", config.appUrl],
+    ["OIDC_ISSUER_URL", config.issuer],
+  ] as const) {
+    try {
+      canonicalBareHttpsOrigin(value, name);
+    } catch {
+      invalid.push(name);
+    }
+  }
+  return invalid.length > 0
+    ? Response.json(
+        { error: "app_auth_not_configured", invalid },
+        { status: 503 },
+      )
+    : null;
 }
 
 // ---- Sealed cookies (HMAC-SHA256, purpose-bound) ----------------------------
@@ -214,35 +266,40 @@ function safeReturnTo(value: string | null): string {
   }
 }
 
-function callbackUrl(request: Request): string {
-  const url = new URL(request.url);
-  return new URL(
-    "/api/auth/callback/takos",
-    `${url.protocol}//${url.host}`,
-  ).toString();
+function callbackUrl(env: Env): string {
+  const origin = canonicalBareHttpsOrigin(authConfig(env).appUrl, "APP_URL");
+  return new URL("/api/auth/callback/takos", origin).toString();
+}
+
+function issuerUrl(env: Env, path: string): string {
+  const origin = canonicalBareHttpsOrigin(
+    authConfig(env).issuer,
+    "OIDC_ISSUER_URL",
+  );
+  return new URL(path, origin).toString();
 }
 
 // ---- OIDC flow ---------------------------------------------------------------
 
 async function exchangeCode(
   env: Env,
-  request: Request,
   code: string,
   codeVerifier: string,
 ): Promise<string> {
   const config = authConfig(env);
-  const tokenEndpoint = `${config.issuer!.replace(/\/$/, "")}/oauth/token`;
+  const tokenEndpoint = issuerUrl(env, "/oauth/token");
   const body = new URLSearchParams({
     grant_type: "authorization_code",
     code,
     client_id: config.clientId!,
-    redirect_uri: callbackUrl(request),
+    redirect_uri: callbackUrl(env),
     code_verifier: codeVerifier,
   });
   // PKCE public clients have no secret; send one only when configured.
   if (config.clientSecret) body.set("client_secret", config.clientSecret);
   const res = await fetch(tokenEndpoint, {
     method: "POST",
+    redirect: "manual",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
   });
@@ -272,9 +329,9 @@ function normalizeWorkspaceIds(value: unknown): string[] {
 }
 
 async function fetchUserInfo(env: Env, accessToken: string) {
-  const config = authConfig(env);
-  const userinfoEndpoint = `${config.issuer!.replace(/\/$/, "")}/oauth/userinfo`;
+  const userinfoEndpoint = issuerUrl(env, "/oauth/userinfo");
   const res = await fetch(userinfoEndpoint, {
+    redirect: "manual",
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   if (!res.ok) throw new Error(`OAuth userinfo failed: ${res.status}`);
@@ -407,12 +464,10 @@ export async function handleAuthRoute(
       returnTo: safeReturnTo(url.searchParams.get("return_to")),
       exp: Math.floor(Date.now() / 1000) + STATE_MAX_AGE_SECONDS,
     };
-    const authUrl = new URL(
-      `${config.issuer!.replace(/\/$/, "")}/oauth/authorize`,
-    );
+    const authUrl = new URL(issuerUrl(env, "/oauth/authorize"));
     authUrl.searchParams.set("response_type", "code");
     authUrl.searchParams.set("client_id", config.clientId!);
-    authUrl.searchParams.set("redirect_uri", callbackUrl(request));
+    authUrl.searchParams.set("redirect_uri", callbackUrl(env));
     authUrl.searchParams.set("scope", "openid profile email");
     authUrl.searchParams.set("state", state.state);
     authUrl.searchParams.set(
@@ -455,12 +510,7 @@ export async function handleAuthRoute(
     ) {
       return Response.json({ error: "invalid_oauth_state" }, { status: 400 });
     }
-    const accessToken = await exchangeCode(
-      env,
-      request,
-      code,
-      state.codeVerifier,
-    );
+    const accessToken = await exchangeCode(env, code, state.codeVerifier);
     const user = await fetchUserInfo(env, accessToken);
     const session = await seal(
       {

@@ -15,6 +15,7 @@ export interface R2Object {
   uploaded: Date;
   httpEtag?: string;
   httpMetadata?: R2HttpMetadata;
+  customMetadata?: Record<string, string>;
   body: ReadableStream;
   arrayBuffer(): Promise<ArrayBuffer>;
 }
@@ -28,6 +29,7 @@ export interface R2Objects {
 
 export interface R2PutOptions {
   httpMetadata?: R2HttpMetadata;
+  customMetadata?: Record<string, string>;
   onlyIf?:
     | {
         etagMatches?: string;
@@ -40,6 +42,7 @@ export interface R2ListOptions {
   prefix?: string;
   limit?: number;
   cursor?: string;
+  include?: Array<"httpMetadata" | "customMetadata">;
 }
 
 export interface R2Bucket {
@@ -62,8 +65,11 @@ export interface Env {
   APP_URL?: string;
 
   // ---- Workspace drive (user-facing) auth ----
-  /** "1"/"true" gates the drive UI + /api/drive behind an OIDC session. */
-  APP_AUTH_REQUIRED?: string;
+  /**
+   * "1"/"true" serves the drive UI + /api/drive with no session at all.
+   * Unset means authenticated, so a half-configured install 503s.
+   */
+  ALLOW_UNAUTHENTICATED_DRIVE?: string;
   /** Takosumi Accounts OIDC issuer, e.g. https://accounts.example. */
   OIDC_ISSUER_URL?: string;
   /** OIDC client id (public client; PKCE). */

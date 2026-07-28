@@ -1,5 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 
+import { workersDevSubdomain } from "./cloudflare-url-safety.ts";
+
 const DEFAULT_API_BASE_URL = "https://api.cloudflare.com/client/v4";
 const PROVIDER_CONFIGURATIONS_FORMAT =
   "takosumi.provider-configurations@v1" as const;
@@ -16,6 +18,9 @@ export interface PurgeR2Environment {
   readonly TAKOS_STORAGE_CLOUDFLARE_ACCOUNT_ID?: string;
   readonly TAKOS_STORAGE_CLOUDFLARE_API_MODE?: string;
   readonly TAKOS_STORAGE_R2_BUCKET_NAME?: string;
+  readonly TAKOS_STORAGE_PURGE_CONFIRMATION?: string;
+  readonly TAKOSUMI_LIFECYCLE_ACTION_ID?: string;
+  readonly TAKOSUMI_LIFECYCLE_ACTION_PHASE?: string;
   readonly TAKOSUMI_OUTPUTS_JSON?: string;
   readonly TAKOSUMI_PROVIDER_CONFIGS_JSON?: string;
 }
@@ -185,6 +190,7 @@ function providerExecutionContext(env: PurgeR2Environment): {
 function apiExecutionContext(env: PurgeR2Environment): {
   readonly apiBase: string;
   readonly directCloudflare: boolean;
+  readonly managedLifecycle: boolean;
 } {
   const mode = env.TAKOS_STORAGE_CLOUDFLARE_API_MODE?.trim() ?? "";
   if (mode !== "" && mode !== "direct") {
@@ -204,9 +210,29 @@ function apiExecutionContext(env: PurgeR2Environment): {
         "CLOUDFLARE_API_BASE_URL",
       ),
       directCloudflare: true,
+      managedLifecycle: false,
     };
   }
-  return providerExecutionContext(env);
+  return {
+    ...providerExecutionContext(env),
+    managedLifecycle: true,
+  };
+}
+
+function hasReviewedLifecycleConfirmation(
+  env: PurgeR2Environment,
+  outputs: Record<string, unknown> | undefined,
+  accountId: string,
+  bucketName: string,
+  managedLifecycle: boolean,
+): boolean {
+  return (
+    managedLifecycle &&
+    env.TAKOSUMI_LIFECYCLE_ACTION_PHASE === "pre_destroy" &&
+    env.TAKOSUMI_LIFECYCLE_ACTION_ID === "empty-r2-before-destroy-v1" &&
+    outputString(outputs, "cloudflare_account_id") === accountId &&
+    outputString(outputs, "object_bucket_name") === bucketName
+  );
 }
 
 function responseCleanerOrigin(
@@ -274,6 +300,7 @@ async function cloudflareRequest(
 ): Promise<Record<string, unknown>> {
   const response = await fetchImpl(url, {
     ...init,
+    redirect: "manual",
     headers: {
       authorization: `Bearer ${apiToken}`,
       ...(init.headers ?? {}),
@@ -304,7 +331,7 @@ async function workersSubdomain(
   if (!isRecord(result) || typeof result.subdomain !== "string") {
     throw new Error("Cloudflare account has no readable workers.dev subdomain");
   }
-  return required(result.subdomain, "Cloudflare workers.dev subdomain");
+  return workersDevSubdomain(result.subdomain);
 }
 
 async function removeCleaner(
@@ -314,6 +341,7 @@ async function removeCleaner(
 ): Promise<void> {
   const response = await fetchImpl(scriptUrl, {
     method: "DELETE",
+    redirect: "manual",
     headers: { authorization: `Bearer ${apiToken}` },
   });
   if (response.status === 404) return;
@@ -336,6 +364,7 @@ async function invokeCleaner(
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     const response = await fetchImpl(url, {
       method: "POST",
+      redirect: "manual",
       headers: { authorization: `Bearer ${purgeToken}` },
     });
     lastStatus = response.status;
@@ -364,11 +393,8 @@ export async function purgeR2BucketBeforeDestroy(
   sleep: (milliseconds: number) => Promise<unknown> = Bun.sleep,
 ): Promise<PurgeR2Result> {
   const outputs = parsedOutputs(env.TAKOSUMI_OUTPUTS_JSON);
-  const { apiBase, directCloudflare } = apiExecutionContext(env);
-  const apiToken = required(
-    env.CLOUDFLARE_API_TOKEN ?? env.CF_API_TOKEN,
-    "CLOUDFLARE_API_TOKEN or CF_API_TOKEN",
-  );
+  const { apiBase, directCloudflare, managedLifecycle } =
+    apiExecutionContext(env);
   const accountId = required(
     env.TAKOS_STORAGE_CLOUDFLARE_ACCOUNT_ID ??
       env.CLOUDFLARE_ACCOUNT_ID ??
@@ -379,6 +405,25 @@ export async function purgeR2BucketBeforeDestroy(
     env.TAKOS_STORAGE_R2_BUCKET_NAME ??
       outputString(outputs, "object_bucket_name"),
     "TAKOS_STORAGE_R2_BUCKET_NAME or TAKOSUMI_OUTPUTS_JSON.object_bucket_name",
+  );
+  const expectedConfirmation = `PURGE ${accountId}/${bucketName}`;
+  if (
+    env.TAKOS_STORAGE_PURGE_CONFIRMATION !== expectedConfirmation &&
+    !hasReviewedLifecycleConfirmation(
+      env,
+      outputs,
+      accountId,
+      bucketName,
+      managedLifecycle,
+    )
+  ) {
+    throw new Error(
+      `TAKOS_STORAGE_PURGE_CONFIRMATION must exactly equal ${expectedConfirmation}, or a managed pre_destroy lifecycle action must carry matching reviewed outputs`,
+    );
+  }
+  const apiToken = required(
+    env.CLOUDFLARE_API_TOKEN ?? env.CF_API_TOKEN,
+    "CLOUDFLARE_API_TOKEN or CF_API_TOKEN",
   );
   const cleanerName = `takos-storage-clean-${createHash("sha256")
     .update(bucketName)

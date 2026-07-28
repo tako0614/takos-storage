@@ -4,20 +4,38 @@
  * artifact is auditable.
  */
 
-export {};
+async function buildWorkerBundle(
+  output: { outdir: string } | { write: false },
+): Promise<void> {
+  const result = await Bun.build({
+    entrypoints: ["src/worker.ts"],
+    target: "browser",
+    format: "esm",
+    naming: "worker.js",
+    minify: false,
+    ...output,
+  });
 
-const result = await Bun.build({
-  entrypoints: ["src/worker.ts"],
-  outdir: "dist",
-  target: "browser",
-  format: "esm",
-  naming: "worker.js",
-  minify: false,
-});
-
-if (!result.success) {
-  for (const log of result.logs) console.error(log);
-  throw new Error("takos-storage worker build failed");
+  if (!result.success) {
+    for (const log of result.logs) console.error(log);
+    throw new Error("takos-storage worker build failed");
+  }
 }
 
-console.log("built dist/worker.js");
+export async function buildWorker(outdir = "dist"): Promise<void> {
+  await buildWorkerBundle({ outdir });
+}
+
+export async function checkWorkerBuild(): Promise<void> {
+  await buildWorkerBundle({ write: false });
+}
+
+if (import.meta.main) {
+  if (Bun.argv.includes("--check")) {
+    await checkWorkerBuild();
+    console.log("Worker bundle builds successfully");
+  } else {
+    await buildWorker();
+    console.log("built dist/worker.js");
+  }
+}

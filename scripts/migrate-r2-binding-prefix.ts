@@ -1,5 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 
+import { workersDevSubdomain } from "./cloudflare-url-safety.ts";
+
 const DEFAULT_API_BASE_URL = "https://api.cloudflare.com/client/v4";
 const MAX_PAGES = 100_000;
 
@@ -49,7 +51,7 @@ function legacyPrefix(value: string | undefined): string {
     "",
   );
   if (
-    normalized.length > 1_024 ||
+    new TextEncoder().encode(`${normalized}/`).byteLength > 1_024 ||
     normalized.includes("\0") ||
     normalized === "interface-bindings" ||
     normalized.startsWith("interface-bindings/")
@@ -67,6 +69,27 @@ function bindingId(value: string | undefined): string {
   return id;
 }
 
+function httpsApiBase(value: string, name: string): string {
+  let url: URL;
+  try {
+    url = new URL(value.trim());
+  } catch {
+    throw new Error(`${name} must be an absolute HTTPS URL`);
+  }
+  if (
+    url.protocol !== "https:" ||
+    url.username !== "" ||
+    url.password !== "" ||
+    url.search !== "" ||
+    url.hash !== ""
+  ) {
+    throw new Error(
+      `${name} must be an absolute HTTPS URL without credentials, query, or fragment`,
+    );
+  }
+  return url.href.replace(/\/+$/u, "");
+}
+
 async function json(response: Response): Promise<Record<string, unknown>> {
   const value = (await response.json().catch(() => null)) as unknown;
   return record(value) ? value : {};
@@ -80,6 +103,7 @@ async function cf(
 ): Promise<Record<string, unknown>> {
   const response = await fetchImpl(url, {
     ...init,
+    redirect: "manual",
     headers: {
       authorization: `Bearer ${token}`,
       ...(init.headers ?? {}),
@@ -101,6 +125,7 @@ async function removeWorker(
 ): Promise<void> {
   const response = await fetchImpl(url, {
     method: "DELETE",
+    redirect: "manual",
     headers: { authorization: `Bearer ${token}` },
   });
   if (response.status === 404) return;
@@ -139,6 +164,9 @@ export default {async fetch(request,env){
   const source=await env.BUCKET.get(listed.key);
   if(!source)continue;
   const targetKey=TARGET_PREFIX+listed.key.slice(LEGACY_PREFIX.length);
+  if(new TextEncoder().encode(targetKey).byteLength>1024){
+   return Response.json({ok:false,error:"target_key_too_long",source:listed.key},{status:409});
+  }
   const target=await env.BUCKET.head(targetKey);
   if(target){
    if(target.size!==source.size||target.customMetadata?.[MARKER]!==source.httpEtag){
@@ -168,11 +196,14 @@ export async function migrateLegacyBindingPrefix(
   const bucket = bucketName(env);
   const prefix = legacyPrefix(env.TAKOS_STORAGE_LEGACY_KEY_PREFIX);
   const binding = bindingId(env.TAKOS_STORAGE_INTERFACE_BINDING_ID);
-  const apiBase = (
+  const apiBase = httpsApiBase(
     env.TAKOS_STORAGE_MIGRATION_API_BASE_URL ??
-    env.CLOUDFLARE_API_BASE_URL ??
-    DEFAULT_API_BASE_URL
-  ).replace(/\/+$/u, "");
+      env.CLOUDFLARE_API_BASE_URL ??
+      DEFAULT_API_BASE_URL,
+    env.TAKOS_STORAGE_MIGRATION_API_BASE_URL
+      ? "TAKOS_STORAGE_MIGRATION_API_BASE_URL"
+      : "CLOUDFLARE_API_BASE_URL",
+  );
   const name = `takos-storage-migrate-${createHash("sha256")
     .update(`${bucket}\0${binding}\0${prefix}`)
     .digest("hex")
@@ -188,11 +219,8 @@ export async function migrateLegacyBindingPrefix(
   );
   const result = subdomainPayload.result;
   const subdomain = record(result)
-    ? required(
-        typeof result.subdomain === "string" ? result.subdomain : undefined,
-        "Cloudflare workers.dev subdomain",
-      )
-    : required(undefined, "Cloudflare workers.dev subdomain");
+    ? workersDevSubdomain(result.subdomain)
+    : workersDevSubdomain(undefined);
   const workerUrl = `https://${name}.${subdomain}.workers.dev/migrate`;
   const form = new FormData();
   form.set(
@@ -238,6 +266,7 @@ export async function migrateLegacyBindingPrefix(
     for (let page = 0; page < MAX_PAGES; page += 1) {
       const response = await fetchImpl(workerUrl, {
         method: "POST",
+        redirect: "manual",
         headers: {
           authorization: `Bearer ${token}`,
           "content-type": "application/json",
