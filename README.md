@@ -2,7 +2,9 @@
 
 Takos Storage は `storage.object` 相当の HTTP object API と、ユーザー向け drive / MCP を提供する standalone Capsule です。Takos worker の内部 service でも、Takosumi Cloud の closed storage 実装でもありません。
 
-この repository の install 入力は root の plain OpenTofu module です。Takosumi 専用 manifest、予約 Output schema、Takosumi provider は必要ありません。Worker の prebuilt artifact は GitHub Release から取得できます。
+この repository の install unit は plain OpenTofu module です。root は direct
+Cloudflare、`deploy/takoform` は portable managed graph です。Worker の prebuilt
+artifact は GitHub Release から取得できます。
 
 ## Runtime authorization
 
@@ -67,10 +69,12 @@ ordinary outputs:
 - `service_runtime_name`, `service_runtime_resource_id`, `service_runtime_managed_by_opentofu`
 - `object_bucket_name`, `cloudflare_account_id`, `oidc_redirect_uri`
 
-[`install-options.json`](install-options.json) は、現在実行可能な Cloudflare OpenTofu module を選ぶための任意の
-`CapsuleSourceOptions` 表示ドキュメントです。Takosumi 専用 manifest ではなく、通常の Git URL + module path での
-直接インストールには不要です。この文書は、それを含む次の通常の安定版タグから利用できます。別クラウドの選択肢は、
-対応する実在 module を出荷したときだけ追加します。
+[`install-options.json`](install-options.json) は導入元を選ぶ任意の
+`CapsuleSourceOptions` 文書です。[`.well-known/takosumi.json`](.well-known/takosumi.json)
+は別の一般 `Repository` manifest で、root と `deploy/takoform` の入力名と表示
+projection を同じ Git commit から提案します。secret、provider credential、
+Cloudflare account、Interface grant、実行権限は含みません。Takosumi は検証後に
+DB-owned InstallConfig へ compile して通常の Plan / Apply を行います。
 
 ## v0.2.x から v0.3.0 への移行
 
