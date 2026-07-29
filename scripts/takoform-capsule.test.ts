@@ -8,12 +8,21 @@ const [main, outputs] = await Promise.all([
 ]);
 
 describe("Takos Storage Takoform Capsule", () => {
-  test("owns the portable Worker and ObjectBucket graph", () => {
-    expect(main).toContain('resource "takoform_edge_worker" "worker"');
+  test("owns the portable HTTP service, ObjectBucket, and Interface graph", () => {
+    expect(main).toContain('resource "takoform_http_service" "worker"');
     expect(main).toContain('resource "takoform_object_bucket" "objects"');
+    expect(main).toContain('resource "takoform_interface" "surface"');
+    for (const name of [
+      "takos-storage.launcher",
+      "takos-storage.object",
+      "takos-storage.mcp",
+    ]) {
+      expect(main).toContain(`name = "${name}"`);
+    }
     expect(main).toContain('name        = "BUCKET"');
     expect(main).toContain("resource    = takoform_object_bucket.objects.id");
     expect(main).toContain('permissions = ["delete", "list", "read", "write"]');
+    expect(main).toContain('originInput = "origin"');
   });
 
   test("uses Takoform directly and no Cloudflare compatibility desired state", () => {
@@ -23,6 +32,8 @@ describe("Takos Storage Takoform Capsule", () => {
     expect(main).not.toContain("cloudflare/cloudflare");
     expect(main).not.toContain('resource "cloudflare_');
     expect(main).not.toContain("/compat/cloudflare/");
+    expect(main).not.toContain("compatibility_date");
+    expect(main).not.toContain("compatibility_flags");
   });
 
   test("publishes ordinary public outputs only", () => {
