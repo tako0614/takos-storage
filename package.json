@@ -12,7 +12,7 @@
     "storage:migrate-binding-prefix": "bun run scripts/migrate-r2-binding-prefix.ts",
     "test": "bun test",
     "audit": "bun audit --audit-level=high",
-    "check": "bunx tsc --noEmit",
+    "check": "bun run fmt:check && bunx tsc --noEmit && bun run test && bun run scripts/build-worker.ts --check",
     "lint": "bunx eslint . --max-warnings=0",
     "fmt": "bunx prettier --write .",
     "fmt:check": "bunx prettier --check ."
