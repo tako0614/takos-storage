@@ -1,7 +1,8 @@
 {
-  "apiVersion": "takosumi.com/v1",
+  "apiVersion": "takosumi.com/v2.1",
   "kind": "Repository",
   "install": {
+    "defaultModule": ".",
     "modules": {
       ".": {
         "inputs": [
@@ -125,11 +126,7 @@
           {
             "kind": "identity.oidc",
             "callbackPath": "/api/auth/callback/takos",
-            "scopes": [
-              "openid",
-              "profile",
-              "email"
-            ],
+            "scopes": ["openid", "profile", "email"],
             "deliver": {
               "variables": {
                 "issuerUrl": "takosumi_accounts_issuer_url",
