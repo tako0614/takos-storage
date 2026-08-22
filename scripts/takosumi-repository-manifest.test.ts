@@ -54,6 +54,16 @@ test("default portable install declares object and agent MCP Interfaces", () => 
   ]);
 });
 
+test("default portable install builds the exact local Worker artifact before provider credentials", () => {
+  expect(manifest.install.modules["deploy/takoform"]?.sourceBuild).toEqual({
+    commands: [
+      { argv: ["bun", "install", "--frozen-lockfile"] },
+      { argv: ["bun", "run", "build:worker"] },
+    ],
+    outputs: ["dist/worker.js"],
+  });
+});
+
 test("declared modules reference real variables and no secret or host authority", () => {
   for (const [path, module] of Object.entries(manifest.install.modules)) {
     const source = moduleSources[path];
@@ -117,6 +127,10 @@ interface RepositoryManifest {
 }
 
 interface RepositoryModule {
+  sourceBuild?: {
+    commands: Array<{ argv: string[] }>;
+    outputs: string[];
+  };
   inputs: Array<{
     name: string;
     source: { kind: string };

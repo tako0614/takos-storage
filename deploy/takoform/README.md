@@ -6,10 +6,11 @@ explicit direct Cloudflare path.
 
 The graph uses current Takoform resources: an `ObjectBucket` and a ModuleWorker
 bundle/version/deployment/endpoint with an explicit `BUCKET` binding. The
-release tag, immutable GitHub release URL, and SHA-256 are pinned together. A
-runner downloads the artifact into its ignored `.terraform` cache, verifies
-the digest, and the Takoform provider commits the verified bytes through the
-Host artifact API.
+repository manifest builds `dist/worker.js` from the exact pinned
+SourceSnapshot before provider credentials are materialized. The Takoform
+provider then reads that local module and commits its exact digest-bound bytes
+through the selected Host's tenant-scoped artifact API before creating the
+immutable WorkerBundle.
 
 Takoform owns only the deployable Resource graph. The repository manifest owns
 the `storage.object` and `mcp.server` declarations and maps their resource URIs

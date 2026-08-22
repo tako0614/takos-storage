@@ -26,12 +26,11 @@ describe("Takos Storage Takoform Capsule", () => {
     expect(main).toContain('version = "= 2.1.1"');
     expect(main).not.toContain("registry.opentofu.org/hashicorp/external");
     expect(main).not.toContain('data "external"');
+    expect(main).toContain('main_module    = "worker.js"');
     expect(main).toContain(
-      "manifest_digest = trimspace(var.worker_bundle_manifest_digest)",
+      'content_file = "${path.module}/../../dist/worker.js"',
     );
-    expect(main).toContain(
-      'default     = "sha256:49ea8a92634723d76bd18315f68fcaf0e3f57e104c49fd0c39476d697cbd2396"',
-    );
+    expect(main).not.toContain("worker_bundle_manifest_digest");
   });
 
   test("uses Takoform directly and no Cloudflare compatibility desired state", () => {

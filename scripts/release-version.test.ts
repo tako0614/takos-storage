@@ -23,10 +23,13 @@ describe("release version", () => {
       `/releases/download/v${packageVersion}/takosumi-artifact.json`,
     );
 
+    expect(takoformModuleSource).toContain('main_module    = "worker.js"');
     expect(takoformModuleSource).toContain(
+      'content_file = "${path.module}/../../dist/worker.js"',
+    );
+    expect(takoformModuleSource).not.toContain(
       'variable "worker_bundle_manifest_digest"',
     );
-    expect(takoformModuleSource).toMatch(/default\s+=\s+"sha256:[a-f0-9]{64}"/);
     expect(takoformModuleSource).not.toContain("/releases/download/");
     expect(outputsSource).not.toContain("app_deployment");
     expect(outputsSource).not.toContain("service_exports");

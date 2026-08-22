@@ -116,6 +116,8 @@ tofu validate
 ```
 
 release tag と `package.json` は同じ version にします。release workflow は
-`worker.js`、SHA-256、`takosumi-artifact.json` を公開します。Hosted install runner は
-その exact bytes を selected Host の artifact API に commit し、module に
-`worker_bundle_manifest_digest` を渡してから Plan を開始します。
+`worker.js`、SHA-256、`takosumi-artifact.json` を公開します。Takosumi の portable
+install は、pin された SourceSnapshot から provider credential を渡す前に同じ
+`build:worker` を実行します。Takoform provider の local authoring がその exact bytes
+を selected Host の tenant-scoped artifact API に commit し、返された manifest digest
+を immutable `WorkerBundle` state として保持します。

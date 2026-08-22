@@ -221,6 +221,17 @@
         ]
       },
       "deploy/takoform": {
+        "sourceBuild": {
+          "commands": [
+            {
+              "argv": ["bun", "install", "--frozen-lockfile"]
+            },
+            {
+              "argv": ["bun", "run", "build:worker"]
+            }
+          ],
+          "outputs": ["dist/worker.js"]
+        },
         "inputs": [
           {
             "name": "project_name",
@@ -234,18 +245,6 @@
               "ja": "サービス名",
               "en": "Service name"
             }
-          },
-          {
-            "name": "worker_bundle_manifest_digest",
-            "source": {
-              "kind": "module_default"
-            },
-            "type": "string",
-            "label": {
-              "ja": "WorkerBundle manifest digest",
-              "en": "WorkerBundle manifest digest"
-            },
-            "advanced": true
           },
           {
             "name": "takosumi_accounts_issuer_url",
