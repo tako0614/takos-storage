@@ -1,5 +1,5 @@
 locals {
-  launch_url = try(takoform_http_service.worker.outputs["url"], null)
+  launch_url = takoform_worker_endpoint.worker.url
 }
 
 output "launch_url" {
@@ -9,18 +9,22 @@ output "launch_url" {
 
 output "api_url" {
   description = "Primary object API resource URI."
-  value       = try("${trimsuffix(local.launch_url, "/")}/o", null)
+  value       = "${trimsuffix(local.launch_url, "/")}/o"
 }
 
 output "mcp_url" {
   description = "Published Streamable HTTP MCP resource URI."
-  value       = try("${trimsuffix(local.launch_url, "/")}/mcp", null)
+  value       = "${trimsuffix(local.launch_url, "/")}/mcp"
 }
 
 output "takoform_resource_ids" {
   description = "Canonical portable Resource identities for this instance."
   value = {
-    worker = takoform_http_service.worker.id
-    bucket = takoform_object_bucket.objects.id
+    worker     = takoform_module_worker.worker.uid
+    bundle     = takoform_worker_bundle.worker.uid
+    version    = takoform_worker_version.worker.uid
+    deployment = takoform_worker_deployment.worker.uid
+    endpoint   = takoform_worker_endpoint.worker.uid
+    bucket     = takoform_edge_object_bucket.objects.uid
   }
 }

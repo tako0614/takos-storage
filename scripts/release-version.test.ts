@@ -23,17 +23,11 @@ describe("release version", () => {
       `/releases/download/v${packageVersion}/takosumi-artifact.json`,
     );
 
-    const takoformReleaseVariable = takoformModuleSource.match(
-      /variable\s+"worker_release_tag"\s*\{([\s\S]*?)\n\}/,
-    )?.[1];
-    expect(takoformReleaseVariable).toBeDefined();
-    expect(takoformReleaseVariable).toContain(
-      `default     = "v${packageVersion}"`,
-    );
     expect(takoformModuleSource).toContain(
-      `/releases/download/v${packageVersion}/worker.js`,
+      'variable "worker_bundle_manifest_digest"',
     );
     expect(takoformModuleSource).toMatch(/default\s+=\s+"sha256:[a-f0-9]{64}"/);
+    expect(takoformModuleSource).not.toContain("/releases/download/");
     expect(outputsSource).not.toContain("app_deployment");
     expect(outputsSource).not.toContain("service_exports");
   });

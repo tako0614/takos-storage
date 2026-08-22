@@ -54,6 +54,21 @@ describe("Interface OAuth verifier", () => {
     expect(await verify(validClaims)).toBe(true);
   });
 
+  test("accepts complete live owner evidence without duplicating control ids in the Worker", async () => {
+    expect(
+      await verifyInterfaceOAuthBearer(
+        new Request("https://storage.example/o/documents/a.txt"),
+        TOKEN,
+        PERMISSION,
+        {
+          issuerUrl: "https://accounts.example",
+          expectedAudience: "https://storage.example/o",
+          fetchImpl: async () => Response.json(validClaims),
+        },
+      ),
+    ).toBe(true);
+  });
+
   test("rejects mismatched or incomplete evidence", async () => {
     expect(
       await verify({ ...validClaims, aud: "https://storage.example/mcp" }),

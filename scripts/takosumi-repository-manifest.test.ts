@@ -21,10 +21,10 @@ test("Takos Storage publishes a closed Repository manifest", () => {
     "install",
     "kind",
   ]);
-  expect(manifest.apiVersion).toBe("takosumi.com/v2.1");
+  expect(manifest.apiVersion).toBe("takosumi.com/v2.3");
   expect(manifest.kind).toBe("Repository");
   expect(Object.keys(manifest.install)).toEqual(["defaultModule", "modules"]);
-  expect(manifest.install.defaultModule).toBe(".");
+  expect(manifest.install.defaultModule).toBe("deploy/takoform");
   expect(Object.keys(manifest.install.modules)).toEqual([
     ".",
     "deploy/takoform",
@@ -32,6 +32,26 @@ test("Takos Storage publishes a closed Repository manifest", () => {
   for (const option of options.options) {
     expect(manifest.install.modules[option.source.path]).toBeDefined();
   }
+});
+
+test("default portable install declares object and agent MCP Interfaces", () => {
+  const interfaces =
+    manifest.install.modules["deploy/takoform"]?.interfaces ?? [];
+  expect(interfaces.map((entry) => entry.spec.type)).toEqual([
+    "storage.object",
+    "mcp.server",
+  ]);
+  const mcp = interfaces.find((entry) => entry.spec.type === "mcp.server");
+  expect(mcp?.spec.version).toBe("2025-11-25");
+  expect(mcp?.spec.inputs.endpoint?.outputName).toBe("mcp_url");
+  expect(mcp?.bindingRequests).toEqual([
+    {
+      key: "installer",
+      subject: { source: "installing_principal" },
+      permissions: ["mcp.invoke"],
+      delivery: { type: "oauth2" },
+    },
+  ]);
 });
 
 test("declared modules reference real variables and no secret or host authority", () => {
@@ -108,4 +128,12 @@ interface RepositoryModule {
       variables?: Record<string, string>;
     }>;
   };
+  interfaces?: Array<{
+    spec: {
+      type: string;
+      version: string;
+      inputs: Record<string, { outputName?: string }>;
+    };
+    bindingRequests?: Array<Record<string, unknown>>;
+  }>;
 }

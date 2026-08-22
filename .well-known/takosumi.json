@@ -1,8 +1,8 @@
 {
-  "apiVersion": "takosumi.com/v2.1",
+  "apiVersion": "takosumi.com/v2.3",
   "kind": "Repository",
   "install": {
-    "defaultModule": ".",
+    "defaultModule": "deploy/takoform",
     "modules": {
       ".": {
         "inputs": [
@@ -134,6 +134,90 @@
               }
             }
           }
+        ],
+        "interfaces": [
+          {
+            "key": "launcher",
+            "name": "takos-storage.launcher",
+            "spec": {
+              "type": "interface.ui.surface",
+              "version": "1",
+              "document": {
+                "launcher": true,
+                "display": { "title": "Takos Storage" }
+              },
+              "inputs": {
+                "url": {
+                  "source": "output",
+                  "outputName": "launch_url",
+                  "outputType": "url"
+                }
+              },
+              "access": { "visibility": "workspace" }
+            },
+            "bindingRequests": [
+              {
+                "key": "installer",
+                "subject": { "source": "installing_principal" },
+                "permissions": ["ui.open"],
+                "delivery": { "type": "none" }
+              }
+            ]
+          },
+          {
+            "key": "object",
+            "name": "takos-storage.object",
+            "spec": {
+              "type": "storage.object",
+              "version": "1",
+              "document": {
+                "protocol": "http.object",
+                "display": { "title": "Takos Storage Object API" }
+              },
+              "inputs": {
+                "endpoint": {
+                  "source": "output",
+                  "outputName": "api_url",
+                  "outputType": "url"
+                }
+              },
+              "access": {
+                "visibility": "workspace",
+                "resourceUriInput": "endpoint"
+              }
+            }
+          },
+          {
+            "key": "mcp",
+            "name": "takos-storage.mcp",
+            "spec": {
+              "type": "mcp.server",
+              "version": "2025-11-25",
+              "document": {
+                "transport": "streamable-http",
+                "display": { "title": "Takos Storage" }
+              },
+              "inputs": {
+                "endpoint": {
+                  "source": "output",
+                  "outputName": "mcp_url",
+                  "outputType": "url"
+                }
+              },
+              "access": {
+                "visibility": "workspace",
+                "resourceUriInput": "endpoint"
+              }
+            },
+            "bindingRequests": [
+              {
+                "key": "installer",
+                "subject": { "source": "installing_principal" },
+                "permissions": ["mcp.invoke"],
+                "delivery": { "type": "oauth2" }
+              }
+            ]
+          }
         ]
       },
       "deploy/takoform": {
@@ -152,41 +236,110 @@
             }
           },
           {
-            "name": "worker_release_tag",
+            "name": "worker_bundle_manifest_digest",
             "source": {
               "kind": "module_default"
             },
             "type": "string",
             "label": {
-              "ja": "Workerリリース",
-              "en": "Worker release"
+              "ja": "WorkerBundle manifest digest",
+              "en": "WorkerBundle manifest digest"
             },
             "advanced": true
           },
           {
-            "name": "worker_bundle_url",
+            "name": "takosumi_accounts_issuer_url",
             "source": {
               "kind": "module_default"
             },
             "type": "string",
             "format": "url",
             "label": {
-              "ja": "Worker URL",
-              "en": "Worker URL"
+              "ja": "Takosumi Accounts発行者",
+              "en": "Takosumi Accounts issuer"
             },
             "advanced": true
           },
           {
-            "name": "worker_bundle_sha256",
+            "name": "takosumi_accounts_client_id",
             "source": {
               "kind": "module_default"
             },
             "type": "string",
             "label": {
-              "ja": "Worker SHA-256",
-              "en": "Worker SHA-256"
+              "ja": "Takosumi Accountsクライアント",
+              "en": "Takosumi Accounts client"
             },
             "advanced": true
+          }
+        ],
+        "requires": [
+          {
+            "kind": "identity.oidc",
+            "callbackPath": "/api/auth/callback/takos",
+            "scopes": ["openid", "profile", "email"],
+            "deliver": {
+              "variables": {
+                "issuerUrl": "takosumi_accounts_issuer_url",
+                "clientId": "takosumi_accounts_client_id"
+              }
+            }
+          }
+        ],
+        "interfaces": [
+          {
+            "key": "object",
+            "name": "takos-storage.object",
+            "spec": {
+              "type": "storage.object",
+              "version": "1",
+              "document": {
+                "protocol": "http.object",
+                "display": { "title": "Takos Storage Object API" }
+              },
+              "inputs": {
+                "endpoint": {
+                  "source": "output",
+                  "outputName": "api_url",
+                  "outputType": "url"
+                }
+              },
+              "access": {
+                "visibility": "workspace",
+                "resourceUriInput": "endpoint"
+              }
+            }
+          },
+          {
+            "key": "mcp",
+            "name": "takos-storage.mcp",
+            "spec": {
+              "type": "mcp.server",
+              "version": "2025-11-25",
+              "document": {
+                "transport": "streamable-http",
+                "display": { "title": "Takos Storage" }
+              },
+              "inputs": {
+                "endpoint": {
+                  "source": "output",
+                  "outputName": "mcp_url",
+                  "outputType": "url"
+                }
+              },
+              "access": {
+                "visibility": "workspace",
+                "resourceUriInput": "endpoint"
+              }
+            },
+            "bindingRequests": [
+              {
+                "key": "installer",
+                "subject": { "source": "installing_principal" },
+                "permissions": ["mcp.invoke"],
+                "delivery": { "type": "oauth2" }
+              }
+            ]
           }
         ]
       }

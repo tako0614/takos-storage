@@ -153,7 +153,7 @@ describe("published storage MCP", () => {
     expect(wrong.status).toBe(401);
   });
 
-  test("accepts an exact mcp.invoke Interface OAuth credential", async () => {
+  test("derives the MCP audience and accepts complete live Interface evidence", async () => {
     const interfaceWorker = createStorageWorker(async () =>
       Response.json({
         token_use: "interface_oauth",
@@ -173,10 +173,7 @@ describe("published storage MCP", () => {
       rpcRequest("tools/list", undefined, "taksrv_storage_mcp"),
       {
         BUCKET: new MemoryBucket(),
-        APP_URL: "https://storage.example",
         OIDC_ISSUER_URL: "https://accounts.example",
-        APP_WORKSPACE_ID: "workspace_a",
-        APP_CAPSULE_ID: "capsule_storage",
       },
     );
     expect(response.status).toBe(200);

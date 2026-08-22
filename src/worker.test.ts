@@ -258,7 +258,7 @@ describe("takos-storage Interface OAuth worker", () => {
     expect(response.status).toBe(503);
   });
 
-  test("never derives OAuth audience authority from a caller-controlled Host", async () => {
+  test("derives the exact request origin and rejects a token minted for another origin", async () => {
     const configured = makeEnv(new MemoryBucket());
     delete configured.APP_URL;
     const response = await worker.fetch(
@@ -267,6 +267,6 @@ describe("takos-storage Interface OAuth worker", () => {
       }),
       configured,
     );
-    expect(response.status).toBe(503);
+    expect(response.status).toBe(401);
   });
 });

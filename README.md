@@ -4,7 +4,9 @@ Takos Storage は `storage.object` 相当の HTTP object API と、ユーザー�
 
 この repository の install unit は plain OpenTofu module です。root は direct
 Cloudflare、`deploy/takoform` は portable managed graph です。Worker の prebuilt
-artifact は GitHub Release から取得できます。
+artifact は GitHub Release で配布し、portable module は選択した Takoform Host に
+事前 commit された content-addressed `WorkerBundle` manifest digest だけを参照します。
+OpenTofu module 内で外部コマンドや download data source は実行しません。
 
 ## Runtime authorization
 
@@ -18,7 +20,7 @@ managed runtime の `/o` と `/mcp` は Takosumi Accounts が発行する invoca
 
 `/o` の object は `interface-bindings/<binding-id>/` 以下に保存されるため、別の InterfaceBinding から同じ相対 key は見えません。旧 `tksvc_` HMAC、共有 signing key、standing admin token はありません。
 
-Interface と InterfaceBinding は Takosumi の service-side blueprint / DB state が所有します。module は `api_url`、`mcp_url`、`launch_url` などの普通の Output だけを返し、Takosumi 側が必要な Output を Interface document input に明示 mapping します。
+Interface 宣言は repository manifest、InterfaceBinding と runtime state は Takosumi が所有します。module は `api_url`、`mcp_url`、`launch_url` などの普通の Output だけを返し、Takosumi 側が必要な Output を Interface document input に明示 mapping します。
 
 service-side blueprint の対応は次の通りです（この表は module manifest ではありません）。
 
@@ -28,7 +30,7 @@ service-side blueprint の対応は次の通りです（この表は module mani
 | MCP         | `mcp_url`          | `mcp.invoke`                                                                                  |
 | launcher UI | `launch_url`       | user navigation only                                                                          |
 
-InstallConfig は Accounts issuer、owning Workspace id、Capsule id を module input へ渡します。Accounts は UserInfo の成功応答前に Interface / InterfaceBinding / current resolved revision / subject / permission / resource ownership を Core で再検証し、stale・revoked・retired な credential を fail closed にします。Worker は成功応答の Interface evidence shape を検証しますが、apply 後に初めて確定する Interface id / Binding id / revision を module input や静的 env に固定しません。InterfaceBinding の grant/revoke/revision authority は Takosumi 側だけが持ちます。
+portable module は Accounts issuer と public client id だけを受け取り、Workspace / Capsule の control-plane id を Resource graph へ複製しません。Accounts は UserInfo の成功応答前に Interface / InterfaceBinding / current resolved revision / subject / permission / resource ownership を Core で再検証します。Worker は live evidence 内の non-empty Workspace / Capsule identity と完全な evidence shape を検証し、stale・revoked・retired な credential を fail closed にします。expected Workspace / Capsule を明示する direct module では一致も検証します。InterfaceBinding の grant/revoke/revision authority は Takosumi 側だけが持ちます。
 
 direct/self-host の `/mcp` だけは、operator が `published_mcp_auth_token` を明示設定できます。空なら static bearer は生成も state 保存もされません。`/o` は常に Interface OAuth が必要です。
 
@@ -61,7 +63,7 @@ tofu apply \
 
 `public_url` と `takosumi_accounts_issuer_url` は path / query / fragment / userinfo を持たない HTTPS origin を指定します（末尾 `/` は正規化されます）。これにより Worker の `APP_URL`、Output の audience、Accounts の OAuth/UserInfo endpoint が常に同じ origin 契約を使います。
 
-deployed Worker では public URL、Accounts issuer、Workspace/Capsule が必須です。Interface の current-state authority は invocation ごとの Accounts UserInfo にあり、初回 apply を Interface の事後生成 id/revision に依存させません。drive sign-in も有効化する場合は `takosumi_accounts_client_id` と operator-managed secret の `app_session_secret` を明示指定してください。module は credential を生成せず、credential を Output に返しません。
+portable Worker では endpoint origin と Accounts issuer が必要で、endpoint origin は request から exact audience として解決できます。Workspace/Capsule identity の authority は invocation ごとの Accounts UserInfo evidence にあり、初回 apply を Interface の事後生成 id/revision に依存させません。drive sign-in も有効化する direct/self-host module では `takosumi_accounts_client_id` と operator-managed secret の `app_session_secret` を明示指定してください。portable module は launcher をまだ宣言しません。module は credential を生成せず、credential を Output に返しません。
 
 ordinary outputs:
 
@@ -71,8 +73,8 @@ ordinary outputs:
 
 [`install-options.json`](install-options.json) は導入元を選ぶ任意の
 `CapsuleSourceOptions` 文書です。[`.well-known/takosumi.json`](.well-known/takosumi.json)
-は別の一般 `Repository` manifest で、root と `deploy/takoform` の入力名と表示
-projection を同じ Git commit から提案します。secret、provider credential、
+は別の一般 `Repository` manifest で、`deploy/takoform` を既定 module とし、root の
+direct module も同じ Git commit から選択可能にします。secret、provider credential、
 Cloudflare account、Interface grant、実行権限は含みません。Takosumi は検証後に
 DB-owned InstallConfig へ compile して通常の Plan / Apply を行います。
 
@@ -113,4 +115,7 @@ tofu init -backend=false -lockfile=readonly
 tofu validate
 ```
 
-release tag と `package.json` / `worker_release_tag` は同じ version にします。release workflow は `worker.js`、SHA-256、`takosumi-artifact.json` を公開します。
+release tag と `package.json` は同じ version にします。release workflow は
+`worker.js`、SHA-256、`takosumi-artifact.json` を公開します。Hosted install runner は
+その exact bytes を selected Host の artifact API に commit し、module に
+`worker_bundle_manifest_digest` を渡してから Plan を開始します。

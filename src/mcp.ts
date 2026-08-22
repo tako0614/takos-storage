@@ -561,7 +561,7 @@ async function authorize(
   ) => Promise<Response>,
 ): Promise<Response | null> {
   const configured = env.PUBLISHED_MCP_AUTH_TOKEN?.trim();
-  const base = env.APP_URL?.trim();
+  const base = env.APP_URL?.trim() || new URL(request.url).origin;
   let audience = "";
   try {
     if (!base) throw new Error("APP_URL is required");

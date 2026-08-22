@@ -1,10 +1,10 @@
 terraform {
-  required_version = ">= 1.5"
+  required_version = ">= 1.8.0"
 
   required_providers {
     takoform = {
-      source  = "registry.opentofu.org/tako0614/takoform"
-      version = "= 0.2.0"
+      source  = "registry.terraform.io/tako0614/takoform"
+      version = "= 2.1.1"
     }
   }
 }
@@ -20,116 +20,90 @@ variable "project_name" {
   }
 }
 
-variable "worker_release_tag" {
-  description = "Takos Storage release selected by the pinned Worker artifact."
+variable "worker_bundle_manifest_digest" {
+  description = "Content-addressed WorkerBundle manifest committed to the selected Takoform Host for Takos Storage v0.3.0."
   type        = string
-  default     = "v0.3.0"
-}
-
-variable "worker_bundle_url" {
-  description = "Immutable HTTPS Worker artifact URL pinned by this release."
-  type        = string
-  default     = "https://github.com/tako0614/takos-storage/releases/download/v0.3.0/worker.js"
+  default     = "sha256:49ea8a92634723d76bd18315f68fcaf0e3f57e104c49fd0c39476d697cbd2396"
 
   validation {
-    condition     = can(regex("^https://[^[:space:]]+$", trimspace(var.worker_bundle_url)))
-    error_message = "worker_bundle_url must be an https URL."
+    condition     = can(regex("^sha256:[a-f0-9]{64}$", trimspace(var.worker_bundle_manifest_digest)))
+    error_message = "worker_bundle_manifest_digest must be a canonical sha256:<hex> manifest digest."
   }
 }
 
-variable "worker_bundle_sha256" {
-  description = "Expected SHA-256 for the pinned Worker artifact."
+variable "takosumi_accounts_issuer_url" {
+  description = "Takosumi Accounts issuer used to validate short-lived Interface OAuth credentials."
   type        = string
-  default     = "sha256:773864cc63e8ff5a1d238577015e53f451d659fda77124ff9986ea69436b8645"
+  default     = ""
+}
 
-  validation {
-    condition     = can(regex("^(sha256:)?[a-f0-9]{64}$", trimspace(var.worker_bundle_sha256)))
-    error_message = "worker_bundle_sha256 must be lowercase SHA-256 hex or sha256:<hex>."
-  }
+variable "takosumi_accounts_client_id" {
+  description = "Public PKCE client id allocated to this installed Capsule."
+  type        = string
+  default     = ""
 }
 
 locals {
-  artifact_url            = trimspace(var.worker_bundle_url)
-  artifact_sha256         = trimspace(var.worker_bundle_sha256)
-  artifact_sha256_checked = startswith(local.artifact_sha256, "sha256:") ? local.artifact_sha256 : "sha256:${local.artifact_sha256}"
-  release_tag             = trimspace(var.worker_release_tag)
-  interface_declarations = {
-    launcher = {
-      name = "takos-storage.launcher"
-      document = {
-        launcher = true
-        display = {
-          title = "Takos Storage"
-          icon  = "/icons/takos-storage.svg"
-        }
-        endpoint = { originInput = "origin", path = "/" }
-      }
-    }
-    object = {
-      name = "takos-storage.object"
-      document = {
-        display  = { title = "Takos Storage Object API" }
-        endpoint = { originInput = "origin", path = "/o" }
-        permissions = [
-          "storage.object.read",
-          "storage.object.write",
-          "storage.object.delete",
-          "storage.object.list",
-        ]
-      }
-    }
-    mcp = {
-      name = "takos-storage.mcp"
-      document = {
-        transport = "streamable-http"
-        display   = { title = "Takos Storage" }
-        endpoint  = { originInput = "origin", path = "/mcp" }
-      }
-    }
+  runtime_vars = merge(
+    trimspace(var.takosumi_accounts_issuer_url) == "" ? {} : {
+      OIDC_ISSUER_URL = trimspace(var.takosumi_accounts_issuer_url)
+    },
+    trimspace(var.takosumi_accounts_client_id) == "" ? {} : {
+      OIDC_CLIENT_ID = trimspace(var.takosumi_accounts_client_id)
+    },
+  )
+}
+
+resource "takoform_edge_object_bucket" "objects" {
+  name = "${var.project_name}-objects"
+}
+
+resource "takoform_module_worker" "worker" {
+  name = var.project_name
+}
+
+resource "takoform_worker_bundle" "worker" {
+  revision_owner  = var.project_name
+  manifest_digest = trimspace(var.worker_bundle_manifest_digest)
+
+  lifecycle {
+    create_before_destroy = true
   }
 }
 
-resource "takoform_object_bucket" "objects" {
-  name          = "${var.project_name}-objects"
-  storage_class = "standard"
-}
+resource "takoform_worker_version" "worker" {
+  revision_owner = var.project_name
+  worker         = takoform_module_worker.worker.name
+  bundle         = takoform_worker_bundle.worker.name
+  handlers       = ["fetch"]
+  vars_json      = jsonencode(local.runtime_vars)
 
-resource "takoform_http_service" "worker" {
-  name            = var.project_name
-  artifact_url    = local.artifact_url
-  artifact_sha256 = local.artifact_sha256_checked
-  runtime         = "javascript"
-
-  connections = [
+  bucket_bindings = [
     {
       name        = "BUCKET"
-      resource    = takoform_object_bucket.objects.id
-      permissions = ["delete", "list", "read", "write"]
-      projection  = "object.binding.v1"
+      target_name = takoform_edge_object_bucket.objects.name
     },
   ]
 
   lifecycle {
-    precondition {
-      condition     = strcontains(local.artifact_url, "/releases/download/${local.release_tag}/")
-      error_message = "worker_bundle_url must select the exact worker_release_tag."
-    }
+    create_before_destroy = true
   }
 }
 
-resource "takoform_interface" "surface" {
-  for_each = local.interface_declarations
-
-  name          = each.value.name
-  version       = "1"
-  resource_kind = "HttpService"
-  resource_name = takoform_http_service.worker.name
-  document_json = jsonencode(each.value.document)
-  inputs_json = jsonencode([
+resource "takoform_worker_deployment" "worker" {
+  name   = "${var.project_name}-deployment"
+  worker = takoform_module_worker.worker.name
+  versions = [
     {
-      name    = "origin"
-      source  = "output"
-      pointer = "/url"
-    }
-  ])
+      worker_version = takoform_worker_version.worker.name
+      weight         = 10000
+    },
+  ]
+}
+
+resource "takoform_worker_endpoint" "worker" {
+  name   = "${var.project_name}-endpoint"
+  worker = takoform_module_worker.worker.name
+
+  depends_on = [takoform_worker_deployment.worker]
 }

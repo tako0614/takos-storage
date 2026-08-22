@@ -61,11 +61,19 @@ const OBJECT_PERMISSION_BY_METHOD: Readonly<Record<string, string>> = {
   DELETE: "storage.object.delete",
 };
 
-function interfaceResourceUri(env: Env, path: string): string {
-  const base = env.APP_URL?.trim();
+function interfaceResourceUri(
+  env: Env,
+  path: string,
+  requestUrl?: string,
+): string {
+  const base = env.APP_URL?.trim() || requestUrl;
   if (!base) return "";
   try {
-    return new URL(path, `${base.replace(/\/$/u, "")}/`).href;
+    const origin = new URL(base);
+    if (origin.protocol !== "https:" || origin.username || origin.password) {
+      return "";
+    }
+    return new URL(path, origin.origin).href;
   } catch {
     return "";
   }
@@ -140,7 +148,7 @@ async function fetchHandler(
     : (OBJECT_PERMISSION_BY_METHOD[request.method] ?? null);
   if (!expectedPermission) return json({ error: "method_not_allowed" }, 405);
 
-  const audience = interfaceResourceUri(env, "/o");
+  const audience = interfaceResourceUri(env, "/o", request.url);
   if (
     !hasValidInterfaceOAuthConfiguration({
       issuerUrl: env.OIDC_ISSUER_URL,

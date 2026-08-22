@@ -8,26 +8,35 @@ const [main, outputs] = await Promise.all([
 ]);
 
 describe("Takos Storage Takoform Capsule", () => {
-  test("owns the portable HTTP service, ObjectBucket, and Interface graph", () => {
-    expect(main).toContain('resource "takoform_http_service" "worker"');
-    expect(main).toContain('resource "takoform_object_bucket" "objects"');
-    expect(main).toContain('resource "takoform_interface" "surface"');
-    for (const name of [
-      "takos-storage.launcher",
-      "takos-storage.object",
-      "takos-storage.mcp",
-    ]) {
-      expect(main).toContain(`name = "${name}"`);
-    }
+  test("owns the current portable Worker and ObjectBucket graph", () => {
+    expect(main).toContain('resource "takoform_module_worker" "worker"');
+    expect(main).toContain('resource "takoform_worker_bundle" "worker"');
+    expect(main).toContain('resource "takoform_worker_version" "worker"');
+    expect(main).toContain('resource "takoform_worker_deployment" "worker"');
+    expect(main).toContain('resource "takoform_worker_endpoint" "worker"');
+    expect(main).toContain('resource "takoform_edge_object_bucket" "objects"');
+    expect(main).not.toContain('resource "takoform_interface"');
     expect(main).toContain('name        = "BUCKET"');
-    expect(main).toContain("resource    = takoform_object_bucket.objects.id");
-    expect(main).toContain('permissions = ["delete", "list", "read", "write"]');
-    expect(main).toContain('originInput = "origin"');
+    expect(main).toContain(
+      "target_name = takoform_edge_object_bucket.objects.name",
+    );
+    expect(main).toContain(
+      'source  = "registry.terraform.io/tako0614/takoform"',
+    );
+    expect(main).toContain('version = "= 2.1.1"');
+    expect(main).not.toContain("registry.opentofu.org/hashicorp/external");
+    expect(main).not.toContain('data "external"');
+    expect(main).toContain(
+      "manifest_digest = trimspace(var.worker_bundle_manifest_digest)",
+    );
+    expect(main).toContain(
+      'default     = "sha256:49ea8a92634723d76bd18315f68fcaf0e3f57e104c49fd0c39476d697cbd2396"',
+    );
   });
 
   test("uses Takoform directly and no Cloudflare compatibility desired state", () => {
     expect(main).toContain(
-      'source  = "registry.opentofu.org/tako0614/takoform"',
+      'source  = "registry.terraform.io/tako0614/takoform"',
     );
     expect(main).not.toContain("cloudflare/cloudflare");
     expect(main).not.toContain('resource "cloudflare_');

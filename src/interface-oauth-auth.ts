@@ -108,8 +108,8 @@ export function hasValidInterfaceOAuthConfiguration(input: {
   return (
     userInfoEndpoint(input.issuerUrl) !== null &&
     canonicalResourceUri(input.audience ?? "") !== null &&
-    boundedId(input.workspaceId) &&
-    boundedId(input.capsuleId)
+    (input.workspaceId === undefined || boundedId(input.workspaceId)) &&
+    (input.capsuleId === undefined || boundedId(input.capsuleId))
   );
 }
 
@@ -159,8 +159,10 @@ export async function authorizeInterfaceOAuthBearer(
   if (
     !endpoint ||
     !expectedAudience ||
-    !boundedId(expectedWorkspaceId) ||
-    !boundedId(expectedCapsuleId) ||
+    (options.expectedWorkspaceId !== undefined &&
+      !boundedId(expectedWorkspaceId)) ||
+    (options.expectedCapsuleId !== undefined &&
+      !boundedId(expectedCapsuleId)) ||
     !validPermission(expectedPermission) ||
     !requestTargetsResource(request, expectedAudience) ||
     !token.startsWith(INTERFACE_TOKEN_PREFIX) ||
@@ -191,8 +193,12 @@ export async function authorizeInterfaceOAuthBearer(
       !boundedId(claims.sub) ||
       claims.aud !== expectedAudience ||
       claims.scope !== expectedPermission ||
-      evidence.workspace_id !== expectedWorkspaceId ||
-      evidence.capsule_id !== expectedCapsuleId ||
+      !boundedId(evidence.workspace_id) ||
+      !boundedId(evidence.capsule_id) ||
+      (expectedWorkspaceId !== undefined &&
+        evidence.workspace_id !== expectedWorkspaceId) ||
+      (expectedCapsuleId !== undefined &&
+        evidence.capsule_id !== expectedCapsuleId) ||
       !boundedId(evidence.interface_id) ||
       !boundedId(evidence.interface_binding_id) ||
       !Number.isSafeInteger(evidence.interface_resolved_revision) ||
@@ -203,8 +209,8 @@ export async function authorizeInterfaceOAuthBearer(
 
     return {
       subject: claims.sub,
-      workspaceId: expectedWorkspaceId,
-      capsuleId: expectedCapsuleId,
+      workspaceId: evidence.workspace_id,
+      capsuleId: evidence.capsule_id,
       interfaceId: evidence.interface_id,
       interfaceBindingId: evidence.interface_binding_id,
       interfaceResolvedRevision: evidence.interface_resolved_revision as number,
