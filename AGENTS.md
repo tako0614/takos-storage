@@ -13,7 +13,7 @@
 ## Ownership
 
 - Owns: Object-store HTTP API and R2-backed data / Browser drive API and UI / Storage MCP and direct and managed OpenTofu graphs
-- Does not own: Takos internal storage / Takoserver S3 or Takosumi Hosted object storage / Takosumi Interface, binding, or credential authority
+- Does not own: Takos internal storage / Takoserver standard object data plane or Takosumi Hosted object storage / Takosumi Interface, binding, or credential authority
 - Hazards: Streaming object and inline MCP transports have different size limits. / Legacy-key migration and non-empty R2 purge are reviewed lifecycle actions. / This product does not implement S3 SigV4 compatibility.
 
 ## Required workflow
