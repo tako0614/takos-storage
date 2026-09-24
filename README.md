@@ -30,7 +30,7 @@ service-side blueprint の対応は次の通りです（この表は module mani
 | MCP         | `mcp_url`          | `mcp.invoke`                                                                                  |
 | launcher UI | `launch_url`       | user navigation only                                                                          |
 
-portable module は Accounts issuer と public client id だけを受け取り、Workspace / Capsule の control-plane id を Resource graph へ複製しません。Accounts は UserInfo の成功応答前に Interface / InterfaceBinding / current resolved revision / subject / permission / resource ownership を Core で再検証します。Worker は live evidence 内の non-empty Workspace / Capsule identity と完全な evidence shape を検証し、stale・revoked・retired な credential を安全側に停止します。expected Workspace / Capsule を明示する direct module では一致も検証します。InterfaceBinding の grant/revoke/revision authority は Takosumi 側だけが持ちます。
+portable module は Accounts issuer と public client id だけを受け取り、Workspace / Capsule の control-plane id を Resource graph へ複製しません。Accounts は UserInfo の成功応答前に Interface / InterfaceBinding / current resolved revision / subject / permission / resource ownership を Core で再検証します。Worker は live evidence 内の non-empty Workspace / Capsule identity と完全な evidence shape を検証し、stale・revoked・廃止済みの credential を安全側に停止します。expected Workspace / Capsule を明示する direct module では一致も検証します。InterfaceBinding の grant/revoke/revision authority は Takosumi 側だけが持ちます。
 
 direct/self-host の `/mcp` だけは、operator が `published_mcp_auth_token` を明示設定できます。空なら static bearer は生成も state 保存もされません。`/o` は常に Interface OAuth が必要です。
 
