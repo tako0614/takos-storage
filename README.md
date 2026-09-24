@@ -30,7 +30,7 @@ service-side blueprint の対応は次の通りです（この表は module mani
 | MCP         | `mcp_url`          | `mcp.invoke`                                                                                  |
 | launcher UI | `launch_url`       | user navigation only                                                                          |
 
-portable module は Accounts issuer と public client id だけを受け取り、Workspace / Capsule の control-plane id を Resource graph へ複製しません。Accounts は UserInfo の成功応答前に Interface / InterfaceBinding / current resolved revision / subject / permission / resource ownership を Core で再検証します。Worker は live evidence 内の non-empty Workspace / Capsule identity と完全な evidence shape を検証し、stale・revoked・retired な credential を fail closed にします。expected Workspace / Capsule を明示する direct module では一致も検証します。InterfaceBinding の grant/revoke/revision authority は Takosumi 側だけが持ちます。
+portable module は Accounts issuer と public client id だけを受け取り、Workspace / Capsule の control-plane id を Resource graph へ複製しません。Accounts は UserInfo の成功応答前に Interface / InterfaceBinding / current resolved revision / subject / permission / resource ownership を Core で再検証します。Worker は live evidence 内の non-empty Workspace / Capsule identity と完全な evidence shape を検証し、stale・revoked・retired な credential を安全側に停止します。expected Workspace / Capsule を明示する direct module では一致も検証します。InterfaceBinding の grant/revoke/revision authority は Takosumi 側だけが持ちます。
 
 direct/self-host の `/mcp` だけは、operator が `published_mcp_auth_token` を明示設定できます。空なら static bearer は生成も state 保存もされません。`/o` は常に Interface OAuth が必要です。
 
@@ -93,7 +93,7 @@ TAKOS_STORAGE_INTERFACE_BINDING_ID=... \
 bun run storage:migrate-binding-prefix
 ```
 
-R2 bucket は non-empty のまま destroy できないため、destroy 前に provider credential と確認済みの `object_bucket_name` / `cloudflare_account_id` を使って purge します。公開 admin endpoint は使いません。Takosumi lifecycle runner は解決した全 binding の検証済み non-secret provider configuration を canonical `takosumi.provider-configurations@v1` envelope (`TAKOSUMI_PROVIDER_CONFIGS_JSON`) で渡します。default Cloudflare entry の `configuration: {}` または公式 `base_url` は Cloudflare の default API + workers.dev invocation を使い、custom `base_url` は provider が返した一時 cleaner origin を使います。`base_url` は API 実行方法だけを選び、managed capacity・billing・credential authority を意味しません。envelope または default Cloudflare entry が無ければ lifecycle cleanup は fail closed です。
+R2 bucket は non-empty のまま destroy できないため、destroy 前に provider credential と確認済みの `object_bucket_name` / `cloudflare_account_id` を使って purge します。公開 admin endpoint は使いません。Takosumi lifecycle runner は解決した全 binding の検証済み non-secret provider configuration を canonical `takosumi.provider-configurations@v1` envelope (`TAKOSUMI_PROVIDER_CONFIGS_JSON`) で渡します。default Cloudflare entry の `configuration: {}` または公式 `base_url` は Cloudflare の default API + workers.dev invocation を使い、custom `base_url` は provider が返した一時 cleaner origin を使います。`base_url` は API 実行方法だけを選び、managed capacity・billing・credential authority を意味しません。envelope または default Cloudflare entry が無ければ lifecycle cleanup は安全側に停止します。
 
 direct/self-host invocation は Takosumi lifecycle envelope と混ぜず、`TAKOS_STORAGE_CLOUDFLARE_API_MODE=direct` を明示します。
 
