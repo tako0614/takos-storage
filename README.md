@@ -1,6 +1,6 @@
 # Takos Storage
 
-Takos Storage は `storage.object` 相当の HTTP object API と、ユーザー向け drive / MCP を提供する standalone Capsule です。Takos worker の内部 service でも、Takosumi Cloud の closed storage 実装でもありません。
+Takos Storage は `storage.object` 相当の HTTP object API と、ユーザー向け drive / MCP を提供する standalone Capsule です。Takos worker の内部 service でも、Takosumi Hosted の closed storage 実装でもありません。
 
 この repository の install unit は plain OpenTofu module です。root は direct
 Cloudflare、`deploy/takoform` は portable managed graph です。Worker の prebuilt
