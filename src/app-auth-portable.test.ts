@@ -309,7 +309,7 @@ describe("installed app sign-in claims", () => {
   };
 
   test.each(["owner", "member", undefined])(
-    "matching app with role %s uses ordinary Drive access without Workspace membership",
+    "matching app with role %s signs in but private Drive requires a live role",
     async (appRole) => {
       const { config, response } = await loginAndCallback(
         "ordinary-signed-in-user",
@@ -326,10 +326,11 @@ describe("installed app sign-in claims", () => {
         required: true,
         sub: "ordinary-signed-in-user",
         name: null,
+        authenticated: true,
       });
       expect(
         (await worker.fetch(req("/api/drive/list", session), config)).status,
-      ).toBe(200);
+      ).toBe(appRole ? 200 : 403);
       // Existing sessions cannot carry app management or Drive access into
       // another installation, even if the compatibility Workspace is the same.
       for (const path of ["/api/auth/me", "/api/drive/list"]) {
@@ -337,8 +338,8 @@ describe("installed app sign-in claims", () => {
           ...config,
           APP_CAPSULE_ID: "another-app",
         });
-        expect(changed.status).toBe(403);
-        expect(await changed.json()).toEqual({ error: "app_access_denied" });
+        expect(changed.status).toBe(401);
+        expect(await changed.json()).toEqual({ error: "unauthorized" });
       }
     },
   );
@@ -395,9 +396,12 @@ describe("installed app sign-in claims", () => {
     );
     expect(response.status).toBe(302);
     const session = cookie(response, "takos_app_session");
-    for (const path of ["/api/auth/me", "/api/drive/list"]) {
-      expect((await worker.fetch(req(path, session), config)).status).toBe(200);
-    }
+    expect(
+      (await worker.fetch(req("/api/auth/me", session), config)).status,
+    ).toBe(200);
+    expect(
+      (await worker.fetch(req("/api/drive/list", session), config)).status,
+    ).toBe(403);
   });
 
   test("an unconfigured expected app cannot trust the claimed app id", async () => {

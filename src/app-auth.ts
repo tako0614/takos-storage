@@ -5,9 +5,10 @@
  * Accounts authorization-code + PKCE, HMAC-sealed cookies) for a plain
  * fetch-handler Worker. Auth is ON by default: the drive UI and /api/drive
  * routes require a signed session cookie. App claims must match APP_CAPSULE_ID;
- * owner/member roles are accepted identity snapshots, never current management
- * authority. An absent role retains ordinary signed-in Drive access. Legacy
- * sessions still honor APP_WORKSPACE_ID.
+ * sign-in accepts ordinary users, but the shared private Drive requires current
+ * owner/member status revalidated through UserInfo for each request. Cached
+ * role snapshots never authorize data access. Legacy sessions still honor
+ * APP_WORKSPACE_ID.
  * An install that omits the Accounts wiring
  * fails loudly with 503 (see appAuthMisconfigured) instead of serving the
  * drive anonymously; a deliberately public drive takes the explicit
@@ -23,6 +24,7 @@ const SESSION_COOKIE = "takos_app_session";
 const STATE_COOKIE = "takos_app_oauth_state";
 const SESSION_MAX_AGE_SECONDS = 12 * 60 * 60;
 const STATE_MAX_AGE_SECONDS = 10 * 60;
+const MAX_SESSION_COOKIE_VALUE_BYTES = 3_800;
 
 export type AppRole = "owner" | "member";
 
@@ -34,6 +36,8 @@ export interface AppSession {
   appRole?: AppRole;
   exp: number;
 }
+
+type StoredAppSession = AppSession & { accessToken?: string };
 
 type OAuthState = {
   state: string;
@@ -232,6 +236,70 @@ export async function unseal<T>(
   return parseBase64UrlJson<T>(payload);
 }
 
+// Modern app sessions retain the token only inside authenticated encryption.
+// Legacy purpose-bound HMAC cookies remain readable without acquiring app roles.
+function sessionContext(env: Env): ArrayBuffer {
+  const config = authConfig(env);
+  return new TextEncoder().encode(
+    JSON.stringify([
+      "takos-storage-session-v2",
+      config.issuer,
+      config.clientId,
+      config.capsuleId,
+    ]),
+  ).buffer;
+}
+
+async function sessionKey(secret: string): Promise<CryptoKey> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`takos-storage-session-v2:${secret}`),
+  );
+  return crypto.subtle.importKey("raw", digest, "AES-GCM", false, [
+    "encrypt",
+    "decrypt",
+  ]);
+}
+
+async function sealAppSession(
+  session: StoredAppSession,
+  env: Env,
+): Promise<string> {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv, additionalData: sessionContext(env) },
+    await sessionKey(authConfig(env).sessionSecret!),
+    new TextEncoder().encode(JSON.stringify(session)),
+  );
+  const bytes = new Uint8Array(iv.length + ciphertext.byteLength);
+  bytes.set(iv);
+  bytes.set(new Uint8Array(ciphertext), iv.length);
+  return `v2.${base64Url(bytes)}`;
+}
+
+async function openAppSession(
+  raw: string,
+  env: Env,
+): Promise<StoredAppSession | null> {
+  try {
+    const encoded = raw.slice(3).replaceAll("-", "+").replaceAll("_", "/");
+    const binary = atob(encoded.padEnd(Math.ceil(encoded.length / 4) * 4, "="));
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+    const plaintext = await crypto.subtle.decrypt(
+      {
+        name: "AES-GCM",
+        iv: bytes.slice(0, 12),
+        additionalData: sessionContext(env),
+      },
+      await sessionKey(authConfig(env).sessionSecret!),
+      bytes.slice(12),
+    );
+    return JSON.parse(new TextDecoder().decode(plaintext)) as StoredAppSession;
+  } catch {
+    return null;
+  }
+}
+
 function randomToken(): string {
   return base64Url(crypto.getRandomValues(new Uint8Array(32)));
 }
@@ -401,6 +469,7 @@ async function fetchUserInfo(env: Env, accessToken: string) {
   const userinfoEndpoint = issuerUrl(env, "/oauth/userinfo");
   const res = await fetch(userinfoEndpoint, {
     redirect: "manual",
+    signal: AbortSignal.timeout(10_000),
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   if (!res.ok) throw new Error(`OAuth userinfo failed: ${res.status}`);
@@ -436,19 +505,18 @@ async function fetchUserInfo(env: Env, accessToken: string) {
 
 // ---- Guard + session lookup --------------------------------------------------
 
-export async function getAppSession(
+async function readAppSession(
   env: Env,
   request: Request,
-): Promise<AppSession | null> {
+): Promise<{ session: StoredAppSession; modern: boolean } | null> {
   const config = authConfig(env);
   if (!config.sessionSecret) return null;
   const raw = parseCookie(request.headers.get("Cookie"), SESSION_COOKIE);
-  if (!raw) return null;
-  const session = await unseal<AppSession>(
-    raw,
-    config.sessionSecret,
-    "session",
-  );
+  if (!raw || raw.length > MAX_SESSION_COOKIE_VALUE_BYTES) return null;
+  const modern = raw.startsWith("v2.");
+  const session = modern
+    ? await openAppSession(raw, env)
+    : await unseal<StoredAppSession>(raw, config.sessionSecret, "session");
   if (
     !session ||
     typeof session.sub !== "string" ||
@@ -458,7 +526,26 @@ export async function getAppSession(
   ) {
     return null;
   }
-  return session;
+  return { session, modern };
+}
+
+export async function getAppSession(
+  env: Env,
+  request: Request,
+): Promise<AppSession | null> {
+  const stored = await readAppSession(env, request);
+  if (!stored) return null;
+  // Access tokens are private to the data-authorization path, never callers of
+  // the public identity helper or /api/auth/me.
+  const session = stored.session;
+  return {
+    sub: session.sub,
+    name: session.name,
+    workspaceIds: session.workspaceIds,
+    capsuleId: session.capsuleId,
+    appRole: session.appRole,
+    exp: session.exp,
+  };
 }
 
 function sessionAccessDenied(env: Env, session: AppSession): Response | null {
@@ -473,8 +560,8 @@ function sessionAccessDenied(env: Env, session: AppSession): Response | null {
     ) {
       return Response.json({ error: "app_access_denied" }, { status: 403 });
     }
-    // Drive's own rule is an authenticated session. App management membership
-    // does not replace that rule or create any additional storage authority.
+    // This is identity admission only. Private shared Drive access separately
+    // requires a live owner/member check; ordinary sign-in grants no data ACL.
     return null;
   }
   const memberships = Array.isArray(session.workspaceIds)
@@ -498,10 +585,38 @@ export async function requireAppAuth(
   if (!config.required) return null;
   const misconfigured = appAuthMisconfigured(env);
   if (misconfigured) return misconfigured;
-  const session = await getAppSession(env, request);
-  if (!session)
-    return Response.json({ error: "unauthorized" }, { status: 401 });
-  return sessionAccessDenied(env, session);
+  const stored = await readAppSession(env, request);
+  if (!stored) return Response.json({ error: "unauthorized" }, { status: 401 });
+  const { session, modern } = stored;
+  const denied = sessionAccessDenied(env, session);
+  if (denied) return denied;
+  // Only legacy Workspace-only cookies retain their former data admission.
+  if (session.capsuleId === undefined && session.appRole === undefined)
+    return null;
+  const membershipRequired = () =>
+    Response.json({ error: "app_membership_required" }, { status: 403 });
+  if (
+    !modern ||
+    typeof session.accessToken !== "string" ||
+    !session.accessToken
+  ) {
+    return membershipRequired();
+  }
+  try {
+    const user = await fetchUserInfo(env, session.accessToken);
+    if (
+      user.sub !== session.sub ||
+      !user.appClaims ||
+      user.appClaims.capsuleId !== config.capsuleId ||
+      user.appClaims.capsuleId !== session.capsuleId ||
+      (user.appClaims.appRole !== "owner" &&
+        user.appClaims.appRole !== "member")
+    )
+      return membershipRequired();
+    return null;
+  } catch {
+    return membershipRequired();
+  }
 }
 
 // ---- Routes ------------------------------------------------------------------
@@ -527,6 +642,7 @@ export async function handleAuthRoute(
       required: true,
       sub: session.sub,
       name: session.name ?? null,
+      ...(session.capsuleId !== undefined ? { authenticated: true } : {}),
       // Cached role claims cannot prove current membership. Storage exposes no
       // management signal until a future management surface revalidates it.
     });
@@ -608,13 +724,24 @@ export async function handleAuthRoute(
     const sessionData: AppSession = {
       sub: user.sub,
       name: user.name,
-      workspaceIds: user.workspaceIds,
+      workspaceIds:
+        user.appClaims.capsuleId !== undefined
+          ? config.workspaceId && user.workspaceIds.includes(config.workspaceId)
+            ? [config.workspaceId]
+            : []
+          : user.workspaceIds,
       ...user.appClaims,
       exp: Math.floor(Date.now() / 1000) + SESSION_MAX_AGE_SECONDS,
     };
     const denied = sessionAccessDenied(env, sessionData);
     if (denied) return denied;
-    const session = await seal(sessionData, config.sessionSecret!, "session");
+    const session =
+      sessionData.capsuleId !== undefined
+        ? await sealAppSession({ ...sessionData, accessToken }, env)
+        : await seal(sessionData, config.sessionSecret!, "session");
+    if (session.length > MAX_SESSION_COOKIE_VALUE_BYTES) {
+      return Response.json({ error: "session_too_large" }, { status: 502 });
+    }
     // Re-validate at emit time so a tampered/legacy state cookie can never
     // drive an external Location redirect.
     const headers = new Headers({ Location: safeReturnTo(state.returnTo) });

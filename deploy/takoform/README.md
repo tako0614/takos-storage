@@ -23,9 +23,17 @@ hostname, or post-Apply endpoint dependency supplies authentication authority.
 
 The installing subject is registration metadata, not an allowed-user list or a
 Workspace id. Browser app claims must match an explicitly configured
-APP_CAPSULE_ID. Owner/member claims and an absent app_role all keep the ordinary
-signed-in Drive rule. Storage has no separate management surface. Cached roles
-are not current management authority and /api/auth/me does not expose them.
+APP_CAPSULE_ID. Any matching-app account may sign in and /api/auth/me confirms
+that identity. The shared Drive is private: each data request revalidates the
+same subject, exact Capsule and current owner/member role through UserInfo.
+An ordinary signed-in account has no Drive sharing grant and receives 403 for
+reads and mutations. Modern cookies encrypt the retained OAuth token with
+AES-GCM bound to issuer/client/Capsule context; HMAC legacy cookies never carry
+new app authority. Storage has no separate management surface, and /api/auth/me
+does not expose cached roles as current authority. Expired/revoked tokens or
+unavailable UserInfo deny private data access; the request has a ten-second
+UserInfo deadline. Users must sign in again after token expiry; this consumer
+does not refresh tokens.
 Legacy Workspace-only claims keep the APP_WORKSPACE_ID membership restriction.
 Object and MCP Interface authorization remain separate; this declaration does
 not qualify their selected-host authority.

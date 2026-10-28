@@ -18,6 +18,8 @@ managed runtime の `/o` と `/mcp` は Takosumi Accounts が発行する invoca
 - configured Capsule と non-empty Principal subject（Workspace は設定した場合だけ互換照合）
 - well-formed な Interface id / InterfaceBinding id / positive resolved revision evidence
 
+ブラウザーの shared Drive は private です。アプリにサインインできることと、Drive のデータを使えることは別で、app-scoped session の read/write は同じ subject・期待 Capsule・現在の owner/member を UserInfo で毎 request 確認します。一般利用者はサインイン後の `/api/auth/me` を利用できますが、共有 grant がないため Drive は 403 です。明示的な `ALLOW_UNAUTHENTICATED_DRIVE` の公開設定と旧 workspace-only cookie の互換規則は維持します。新 session 内の OAuth token は issuer/client/Capsule に結び付けた AES-GCM で暗号化します。
+
 `/o` の object は `interface-bindings/<binding-id>/` 以下に保存されるため、別の InterfaceBinding から同じ相対 key は見えません。旧 `tksvc_` HMAC、共有 signing key、standing admin token はありません。
 
 Interface 宣言は repository manifest、InterfaceBinding と runtime state は Takosumi が所有します。module は `api_url`、`mcp_url`、`launch_url` などの普通の Output だけを返し、Takosumi 側が必要な Output を Interface document input に明示 mapping します。
