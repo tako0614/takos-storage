@@ -320,11 +320,12 @@ describe("installed app sign-in claims", () => {
       const session = cookie(response, "takos_app_session");
       const me = await worker.fetch(req("/api/auth/me", session), config);
       expect(me.status).toBe(200);
+      // A previously issued owner/member claim may have been revoked. /me
+      // must never publish that cached snapshot as current management authority.
       expect(await me.json()).toEqual({
         required: true,
         sub: "ordinary-signed-in-user",
         name: null,
-        appRole: appRole ?? null,
       });
       expect(
         (await worker.fetch(req("/api/drive/list", session), config)).status,
@@ -385,6 +386,19 @@ describe("installed app sign-in claims", () => {
       expect(response.headers.get("set-cookie")).toBeNull();
     },
   );
+
+  test("app browser sessions need no compatibility Workspace configuration", async () => {
+    const { config, response } = await loginAndCallback(
+      "ordinary-user",
+      { APP_CAPSULE_ID: "fixture-app" },
+      { takosumi: { capsule_id: "fixture-app" } },
+    );
+    expect(response.status).toBe(302);
+    const session = cookie(response, "takos_app_session");
+    for (const path of ["/api/auth/me", "/api/drive/list"]) {
+      expect((await worker.fetch(req(path, session), config)).status).toBe(200);
+    }
+  });
 
   test("an unconfigured expected app cannot trust the claimed app id", async () => {
     const { response } = await loginAndCallback(

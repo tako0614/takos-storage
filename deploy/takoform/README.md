@@ -1,7 +1,7 @@
 # Takos Storage Takoform Capsule
 
 Select `deploy/takoform` explicitly for the portable Host, or `.` for direct
-Cloudflare. The v2.4 repository manifest has no implicit default module.
+Cloudflare. The v2.5 repository manifest has no implicit default module.
 
 The portable graph retains its ObjectBucket and Worker bundle/version/deployment/
 endpoint with the explicit `BUCKET` binding. The installer builds `dist/worker.js`
@@ -17,23 +17,32 @@ Browser sessions use the existing v2.4 runtime-input protocol. Takosumi generate
 one Capsule-stable session secret and delivers it privately with the registered
 OIDC issuer, public client, pairwise installing subject, and exact callback URI.
 Those five bindings are declared as required sensitive names on WorkerVersion;
-values never enter module variables, vars_json or Outputs. The registered HTTPS
+sensitive values never enter module variables, vars_json or Outputs. The registered HTTPS
 callback supplies the browser origin before Apply; no Request Host, guessed
 hostname, or post-Apply endpoint dependency supplies authentication authority.
 
 The installing subject is registration metadata, not an allowed-user list or a
 Workspace id. Browser app claims must match an explicitly configured
-APP_CAPSULE_ID. An owner/member app_role is exposed by /api/auth/me; no role
-means ordinary signed-in Drive access and grants no management role. Legacy
-Workspace-only claims keep the APP_WORKSPACE_ID membership restriction.
+APP_CAPSULE_ID. Owner/member claims and an absent app_role all keep the ordinary
+signed-in Drive rule. Storage has no separate management surface. Cached roles
+are not current management authority and /api/auth/me does not expose them.
+Legacy Workspace-only claims keep the APP_WORKSPACE_ID membership restriction.
 Object and MCP Interface authorization remain separate; this declaration does
-not qualify their selected-host authority. The current v2.4 portable identity
-recipe does not deliver an expected Capsule id, so it cannot accept app claims
-until that id is supplied by supported runtime configuration; it never trusts a
-claimed id as its expected id. The direct adapter binds APP_CAPSULE_ID beside
-APP_WORKSPACE_ID from its takosumi_capsule_id/takosumi_workspace_id inputs and
-retains its operator-provided APP_URL/session-secret. Any registered callback
-must match that origin.
+not qualify their selected-host authority.
+
+Both modules accept optional takosumi_capsule_id/takosumi_workspace_id inputs
+and bind APP_CAPSULE_ID plus optional legacy APP_WORKSPACE_ID. Capsule-only
+configuration is supported; the Workspace id is never required for app claims.
+The portable module uses
+WorkerVersion vars_json only for these non-secret ids. The v2.5 manifest
+explicitly declares capsule_id/workspace_id context input sources. Takosumi
+validates and compiles those proposals into its service-owned InstallConfig
+context mapping, which supplies authenticated ledger identities at Run
+preparation. They are not user-entered identity fields. The existing OIDC
+runtime recipe continues to deliver only its sensitive bindings.
+Without the expected app id, new app claims fail closed; an incoming claim is
+never used to infer that id. The direct adapter retains its operator-provided
+APP_URL/session-secret and validates any registered callback against that origin.
 
 The selected Host must actually support Provider4 runtime inputs, its origin
 reservation, and the matching credential recipe. Source/compiler/local synthetic

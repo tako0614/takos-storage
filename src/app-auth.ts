@@ -5,8 +5,9 @@
  * Accounts authorization-code + PKCE, HMAC-sealed cookies) for a plain
  * fetch-handler Worker. Auth is ON by default: the drive UI and /api/drive
  * routes require a signed session cookie. App claims must match APP_CAPSULE_ID;
- * owner/member roles describe management access, while an absent role retains
- * ordinary signed-in Drive access. Legacy sessions still honor APP_WORKSPACE_ID.
+ * owner/member roles are accepted identity snapshots, never current management
+ * authority. An absent role retains ordinary signed-in Drive access. Legacy
+ * sessions still honor APP_WORKSPACE_ID.
  * An install that omits the Accounts wiring
  * fails loudly with 503 (see appAuthMisconfigured) instead of serving the
  * drive anonymously; a deliberately public drive takes the explicit
@@ -526,9 +527,8 @@ export async function handleAuthRoute(
       required: true,
       sub: session.sub,
       name: session.name ?? null,
-      ...(session.capsuleId !== undefined
-        ? { appRole: session.appRole ?? null }
-        : {}),
+      // Cached role claims cannot prove current membership. Storage exposes no
+      // management signal until a future management surface revalidates it.
     });
   }
 

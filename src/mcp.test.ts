@@ -174,6 +174,7 @@ describe("published storage MCP", () => {
       {
         BUCKET: new MemoryBucket(),
         OIDC_ISSUER_URL: "https://accounts.example",
+        APP_CAPSULE_ID: "capsule_storage",
       },
     );
     expect(response.status).toBe(200);

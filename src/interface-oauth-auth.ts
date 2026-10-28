@@ -17,7 +17,7 @@ export interface InterfaceOAuthOptions {
 
 export interface InterfaceOAuthAuthorization {
   readonly subject: string;
-  readonly workspaceId: string;
+  readonly workspaceId?: string;
   readonly capsuleId: string;
   readonly interfaceId: string;
   readonly interfaceBindingId: string;
@@ -109,7 +109,7 @@ export function hasValidInterfaceOAuthConfiguration(input: {
     userInfoEndpoint(input.issuerUrl) !== null &&
     canonicalResourceUri(input.audience ?? "") !== null &&
     (input.workspaceId === undefined || boundedId(input.workspaceId)) &&
-    (input.capsuleId === undefined || boundedId(input.capsuleId))
+    boundedId(input.capsuleId)
   );
 }
 
@@ -161,8 +161,7 @@ export async function authorizeInterfaceOAuthBearer(
     !expectedAudience ||
     (options.expectedWorkspaceId !== undefined &&
       !boundedId(expectedWorkspaceId)) ||
-    (options.expectedCapsuleId !== undefined &&
-      !boundedId(expectedCapsuleId)) ||
+    !boundedId(expectedCapsuleId) ||
     !validPermission(expectedPermission) ||
     !requestTargetsResource(request, expectedAudience) ||
     !token.startsWith(INTERFACE_TOKEN_PREFIX) ||
@@ -193,12 +192,13 @@ export async function authorizeInterfaceOAuthBearer(
       !boundedId(claims.sub) ||
       claims.aud !== expectedAudience ||
       claims.scope !== expectedPermission ||
-      !boundedId(evidence.workspace_id) ||
+      (evidence.workspace_id !== undefined &&
+        !boundedId(evidence.workspace_id)) ||
       !boundedId(evidence.capsule_id) ||
       (expectedWorkspaceId !== undefined &&
+        evidence.workspace_id !== undefined &&
         evidence.workspace_id !== expectedWorkspaceId) ||
-      (expectedCapsuleId !== undefined &&
-        evidence.capsule_id !== expectedCapsuleId) ||
+      evidence.capsule_id !== expectedCapsuleId ||
       !boundedId(evidence.interface_id) ||
       !boundedId(evidence.interface_binding_id) ||
       !Number.isSafeInteger(evidence.interface_resolved_revision) ||
@@ -209,7 +209,9 @@ export async function authorizeInterfaceOAuthBearer(
 
     return {
       subject: claims.sub,
-      workspaceId: evidence.workspace_id,
+      ...(boundedId(evidence.workspace_id)
+        ? { workspaceId: evidence.workspace_id }
+        : {}),
       capsuleId: evidence.capsule_id,
       interfaceId: evidence.interface_id,
       interfaceBindingId: evidence.interface_binding_id,

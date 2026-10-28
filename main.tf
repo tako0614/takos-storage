@@ -309,7 +309,7 @@ locals {
   provided_session_secret = trimspace(var.app_session_secret)
   workspace_id            = trimspace(var.takosumi_workspace_id)
   capsule_id              = trimspace(var.takosumi_capsule_id)
-  interface_owner_enabled = local.workspace_id != "" && local.capsule_id != ""
+  interface_owner_enabled = local.capsule_id != ""
   oidc_redirect_uri       = local.launch_url != null ? "${local.launch_url}/api/auth/callback/takos" : null
 
   r2_objects_bucket = "${local.resource_prefix}-objects"
@@ -375,12 +375,14 @@ resource "cloudflare_workers_script" "worker" {
         text = local.accounts_issuer_url
       },
     ] : [],
-    local.interface_owner_enabled ? [
+    local.workspace_id != "" ? [
       {
         type = "plain_text"
         name = "APP_WORKSPACE_ID"
         text = local.workspace_id
       },
+    ] : [],
+    local.interface_owner_enabled ? [
       {
         type = "plain_text"
         name = "APP_CAPSULE_ID"
@@ -440,13 +442,9 @@ resource "cloudflare_workers_script" "worker" {
         local.accounts_issuer_url != "" &&
         local.interface_owner_enabled
       )
-      error_message = "A deployed Worker requires a public URL, Accounts issuer, and owning Workspace/Capsule. Current Interface evidence is revalidated by Accounts UserInfo at invocation time."
+      error_message = "A deployed Worker requires a public URL, Accounts issuer, and installed Capsule id. Current Interface evidence is revalidated by Accounts UserInfo at invocation time."
     }
 
-    precondition {
-      condition     = (local.workspace_id == "") == (local.capsule_id == "")
-      error_message = "takosumi_workspace_id and takosumi_capsule_id must be set together."
-    }
 
     precondition {
       condition     = !local.app_auth_enabled || local.provided_session_secret != ""

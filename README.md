@@ -15,7 +15,7 @@ managed runtime の `/o` と `/mcp` は Takosumi Accounts が発行する invoca
 - `token_use = interface_oauth`
 - canonical resource URI と完全一致する `aud`
 - operation ごとの単一 permission (`storage.object.read` / `write` / `delete` / `list`、または `mcp.invoke`)
-- owning Workspace / Capsule と non-empty Principal subject
+- configured Capsule と non-empty Principal subject（Workspace は設定した場合だけ互換照合）
 - well-formed な Interface id / InterfaceBinding id / positive resolved revision evidence
 
 `/o` の object は `interface-bindings/<binding-id>/` 以下に保存されるため、別の InterfaceBinding から同じ相対 key は見えません。旧 `tksvc_` HMAC、共有 signing key、standing admin token はありません。
@@ -30,7 +30,7 @@ service-side blueprint の対応は次の通りです（この表は module mani
 | MCP         | `mcp_url`          | `mcp.invoke`                                                                                  |
 | launcher UI | `launch_url`       | user navigation only                                                                          |
 
-portable module は Accounts issuer と public client id だけを受け取り、Workspace / Capsule の control-plane id を Resource graph へ複製しません。Accounts は UserInfo の成功応答前に Interface / InterfaceBinding / current resolved revision / subject / permission / resource ownership を Core で再検証します。Worker は live evidence 内の non-empty Workspace / Capsule identity と完全な evidence shape を検証し、stale・revoked・廃止済みの credential を安全側に停止します。expected Workspace / Capsule を明示する direct module では一致も検証します。InterfaceBinding の grant/revoke/revision authority は Takosumi 側だけが持ちます。
+両 module は install context の `takosumi_capsule_id` を `APP_CAPSULE_ID` へ渡し、ブラウザー app claim と Interface OAuth の対象 Capsule を必ず照合します。`takosumi_workspace_id` / `APP_WORKSPACE_ID` は旧 workspace 形式を照合する任意の互換設定です。Workspace を省略しても exact Capsule・audience・permission・InterfaceBinding evidence が揃えば利用できます。Accounts は UserInfo の成功応答前に Interface / InterfaceBinding / current resolved revision / subject / permission / resource ownership を Core で再検証します。Worker は完全な evidence shape を検証し、stale・revoked・廃止済みの credential を安全側に停止します。InterfaceBinding の grant/revoke/revision authority は Takosumi 側だけが持ちます。
 
 direct/self-host の `/mcp` だけは、operator が `published_mcp_auth_token` を明示設定できます。空なら static bearer は生成も state 保存もされません。`/o` は常に Interface OAuth が必要です。
 
@@ -63,7 +63,7 @@ tofu apply \
 
 `public_url` と `takosumi_accounts_issuer_url` は path / query / fragment / userinfo を持たない HTTPS origin を指定します（末尾 `/` は正規化されます）。これにより Worker の `APP_URL`、Output の audience、Accounts の OAuth/UserInfo endpoint が常に同じ origin 契約を使います。
 
-portable Worker では endpoint origin と Accounts issuer が必要で、endpoint origin は request から exact audience として解決できます。Workspace/Capsule identity の authority は invocation ごとの Accounts UserInfo evidence にあり、初回 apply を Interface の事後生成 id/revision に依存させません。drive sign-in も有効化する direct/self-host module では `takosumi_accounts_client_id` と operator-managed secret の `app_session_secret` を明示指定してください。portable module は launcher をまだ宣言しません。module は credential を生成せず、credential を Output に返しません。
+portable Worker では endpoint origin・Accounts issuer・期待する Capsule id が必要で、endpoint origin は request から exact audience として解決できます。v2.5 manifest の `capsule_id` context input を検証・compile した service-owned InstallConfig が、期待 Capsule id を `takosumi_capsule_id` へ配送します。Workspace id は任意です。invocation ごとの Accounts UserInfo evidence を期待 Capsule と照合し、初回 apply を Interface の事後生成 id/revision に依存させません。drive sign-in も有効化する direct/self-host module では `takosumi_accounts_client_id` と operator-managed secret の `app_session_secret` を明示指定してください。portable module は launcher をまだ宣言しません。module は credential を生成せず、credential を Output に返しません。
 
 ordinary outputs:
 
