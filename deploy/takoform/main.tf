@@ -4,7 +4,7 @@ terraform {
   required_providers {
     takoform = {
       source  = "registry.terraform.io/tako0614/takoform"
-      version = "= 2.1.1"
+      version = "= 4.1.0"
     }
   }
 }
@@ -20,40 +20,6 @@ variable "project_name" {
   }
 }
 
-variable "worker_bundle_manifest_digest" {
-  description = "Content-addressed WorkerBundle manifest committed to the selected Takoform Host for Takos Storage v0.3.0."
-  type        = string
-  default     = "sha256:49ea8a92634723d76bd18315f68fcaf0e3f57e104c49fd0c39476d697cbd2396"
-
-  validation {
-    condition     = can(regex("^sha256:[a-f0-9]{64}$", trimspace(var.worker_bundle_manifest_digest)))
-    error_message = "worker_bundle_manifest_digest must be a canonical sha256:<hex> manifest digest."
-  }
-}
-
-variable "takosumi_accounts_issuer_url" {
-  description = "Takosumi Accounts issuer used to validate short-lived Interface OAuth credentials."
-  type        = string
-  default     = ""
-}
-
-variable "takosumi_accounts_client_id" {
-  description = "Public PKCE client id allocated to this installed Capsule."
-  type        = string
-  default     = ""
-}
-
-locals {
-  runtime_vars = merge(
-    trimspace(var.takosumi_accounts_issuer_url) == "" ? {} : {
-      OIDC_ISSUER_URL = trimspace(var.takosumi_accounts_issuer_url)
-    },
-    trimspace(var.takosumi_accounts_client_id) == "" ? {} : {
-      OIDC_CLIENT_ID = trimspace(var.takosumi_accounts_client_id)
-    },
-  )
-}
-
 resource "takoform_edge_object_bucket" "objects" {
   name = "${var.project_name}-objects"
 }
@@ -63,8 +29,13 @@ resource "takoform_module_worker" "worker" {
 }
 
 resource "takoform_worker_bundle" "worker" {
-  revision_owner  = var.project_name
-  manifest_digest = trimspace(var.worker_bundle_manifest_digest)
+  revision_owner = var.project_name
+  main_module    = "worker.js"
+  modules = [{
+    name         = "worker.js"
+    content_type = "application/javascript+module"
+    content_file = "${path.module}/../../dist/worker.js"
+  }]
 
   lifecycle {
     create_before_destroy = true
@@ -76,7 +47,13 @@ resource "takoform_worker_version" "worker" {
   worker         = takoform_module_worker.worker.name
   bundle         = takoform_worker_bundle.worker.name
   handlers       = ["fetch"]
-  vars_json      = jsonencode(local.runtime_vars)
+  required_sensitive_vars = [
+    "APP_SESSION_SECRET",
+    "OIDC_ISSUER_URL",
+    "OIDC_CLIENT_ID",
+    "OIDC_OWNER_SUB",
+    "OIDC_REDIRECT_URI",
+  ]
 
   bucket_bindings = [
     {

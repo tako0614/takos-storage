@@ -53,6 +53,7 @@ function authConfig(env: Env) {
   return {
     required: appAuthRequired(env),
     appUrl: envValue(env, "APP_URL"),
+    redirectUri: env.OIDC_REDIRECT_URI,
     issuer: envValue(env, "OIDC_ISSUER_URL"),
     clientId: envValue(env, "OIDC_CLIENT_ID"),
     clientSecret: envValue(env, "OIDC_CLIENT_SECRET"),
@@ -89,12 +90,16 @@ function authMissing(env: Env): string[] {
   const config = authConfig(env);
   if (!config.required) return [];
   const requiredValues: Array<[string, string | undefined]> = [
-    ["APP_URL", config.appUrl],
     ["OIDC_ISSUER_URL", config.issuer],
     ["OIDC_CLIENT_ID", config.clientId],
     ["APP_SESSION_SECRET", config.sessionSecret],
   ];
-  return requiredValues.flatMap(([name, value]) => (value ? [] : [name]));
+  const missing = requiredValues.flatMap(([name, value]) =>
+    value ? [] : [name],
+  );
+  if (!config.appUrl && config.redirectUri === undefined)
+    missing.unshift("APP_URL");
+  return missing;
 }
 
 export function appAuthMisconfigured(env: Env): Response | null {
@@ -108,14 +113,27 @@ export function appAuthMisconfigured(env: Env): Response | null {
   if (!appAuthRequired(env)) return null;
   const config = authConfig(env);
   const invalid: string[] = [];
-  for (const [name, value] of [
-    ["APP_URL", config.appUrl],
-    ["OIDC_ISSUER_URL", config.issuer],
-  ] as const) {
+  for (const [name, value] of [["OIDC_ISSUER_URL", config.issuer]] as const) {
     try {
       canonicalBareHttpsOrigin(value, name);
     } catch {
       invalid.push(name);
+    }
+  }
+  if (config.appUrl !== undefined) {
+    try {
+      canonicalBareHttpsOrigin(config.appUrl, "APP_URL");
+    } catch {
+      invalid.push("APP_URL");
+    }
+  }
+  if (!invalid.includes("APP_URL")) {
+    try {
+      callbackUrl(env);
+    } catch {
+      invalid.push(
+        config.redirectUri !== undefined ? "OIDC_REDIRECT_URI" : "APP_URL",
+      );
     }
   }
   return invalid.length > 0
@@ -267,7 +285,28 @@ function safeReturnTo(value: string | null): string {
 }
 
 function callbackUrl(env: Env): string {
-  const origin = canonicalBareHttpsOrigin(authConfig(env).appUrl, "APP_URL");
+  const config = authConfig(env);
+  if (config.redirectUri !== undefined) {
+    const url = new URL(config.redirectUri);
+    if (
+      url.protocol !== "https:" ||
+      url.username ||
+      url.password ||
+      url.pathname !== "/api/auth/callback/takos" ||
+      url.search ||
+      url.hash ||
+      config.redirectUri !== url.href ||
+      url.href !== `${url.origin}/api/auth/callback/takos` ||
+      (config.appUrl &&
+        canonicalBareHttpsOrigin(config.appUrl, "APP_URL") !== url.origin)
+    ) {
+      throw new Error(
+        "OIDC_REDIRECT_URI must match the registered HTTPS app callback",
+      );
+    }
+    return url.href;
+  }
+  const origin = canonicalBareHttpsOrigin(config.appUrl, "APP_URL");
   return new URL("/api/auth/callback/takos", origin).toString();
 }
 

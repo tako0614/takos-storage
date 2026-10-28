@@ -1,8 +1,7 @@
 {
-  "apiVersion": "takosumi.com/v2.3",
+  "apiVersion": "takosumi.com/v2.4",
   "kind": "Repository",
   "install": {
-    "defaultModule": "deploy/takoform",
     "modules": {
       ".": {
         "inputs": [
@@ -111,6 +110,32 @@
               "en": "Worker SHA-256"
             },
             "advanced": true
+          },
+          {
+            "name": "takosumi_accounts_url",
+            "source": {
+              "kind": "module_default"
+            },
+            "type": "string",
+            "format": "url",
+            "label": {
+              "ja": "Takosumi Accounts URL",
+              "en": "Takosumi Accounts URL"
+            },
+            "advanced": true
+          },
+          {
+            "name": "takosumi_accounts_redirect_uri",
+            "source": {
+              "kind": "module_default"
+            },
+            "type": "string",
+            "format": "url",
+            "label": {
+              "ja": "Registered callback URI",
+              "en": "Registered callback URI"
+            },
+            "advanced": true
           }
         ],
         "requires": [
@@ -130,7 +155,9 @@
             "deliver": {
               "variables": {
                 "issuerUrl": "takosumi_accounts_issuer_url",
-                "clientId": "takosumi_accounts_client_id"
+                "clientId": "takosumi_accounts_client_id",
+                "accountsUrl": "takosumi_accounts_url",
+                "redirectUri": "takosumi_accounts_redirect_uri"
               }
             }
           }
@@ -144,7 +171,9 @@
               "version": "1",
               "document": {
                 "launcher": true,
-                "display": { "title": "Takos Storage" }
+                "display": {
+                  "title": "Takos Storage"
+                }
               },
               "inputs": {
                 "url": {
@@ -153,14 +182,20 @@
                   "outputType": "url"
                 }
               },
-              "access": { "visibility": "workspace" }
+              "access": {
+                "visibility": "workspace"
+              }
             },
             "bindingRequests": [
               {
                 "key": "installer",
-                "subject": { "source": "installing_principal" },
+                "subject": {
+                  "source": "installing_principal"
+                },
                 "permissions": ["ui.open"],
-                "delivery": { "type": "none" }
+                "delivery": {
+                  "type": "none"
+                }
               }
             ]
           },
@@ -172,7 +207,9 @@
               "version": "1",
               "document": {
                 "protocol": "http.object",
-                "display": { "title": "Takos Storage Object API" }
+                "display": {
+                  "title": "Takos Storage Object API"
+                }
               },
               "inputs": {
                 "endpoint": {
@@ -195,7 +232,9 @@
               "version": "2025-11-25",
               "document": {
                 "transport": "streamable-http",
-                "display": { "title": "Takos Storage" }
+                "display": {
+                  "title": "Takos Storage"
+                }
               },
               "inputs": {
                 "endpoint": {
@@ -212,9 +251,13 @@
             "bindingRequests": [
               {
                 "key": "installer",
-                "subject": { "source": "installing_principal" },
+                "subject": {
+                  "source": "installing_principal"
+                },
                 "permissions": ["mcp.invoke"],
-                "delivery": { "type": "oauth2" }
+                "delivery": {
+                  "type": "oauth2"
+                }
               }
             ]
           }
@@ -234,59 +277,70 @@
               "ja": "サービス名",
               "en": "Service name"
             }
-          },
-          {
-            "name": "worker_bundle_manifest_digest",
-            "source": {
-              "kind": "module_default"
-            },
-            "type": "string",
-            "label": {
-              "ja": "WorkerBundle manifest digest",
-              "en": "WorkerBundle manifest digest"
-            },
-            "advanced": true
-          },
-          {
-            "name": "takosumi_accounts_issuer_url",
-            "source": {
-              "kind": "module_default"
-            },
-            "type": "string",
-            "format": "url",
-            "label": {
-              "ja": "Takosumi Accounts発行者",
-              "en": "Takosumi Accounts issuer"
-            },
-            "advanced": true
-          },
-          {
-            "name": "takosumi_accounts_client_id",
-            "source": {
-              "kind": "module_default"
-            },
-            "type": "string",
-            "label": {
-              "ja": "Takosumi Accountsクライアント",
-              "en": "Takosumi Accounts client"
-            },
-            "advanced": true
           }
         ],
         "requires": [
+          {
+            "kind": "secret.generated",
+            "bytes": 32,
+            "encoding": "hex",
+            "deliver": {
+              "bindings": {
+                "value": "APP_SESSION_SECRET"
+              }
+            }
+          },
           {
             "kind": "identity.oidc",
             "callbackPath": "/api/auth/callback/takos",
             "scopes": ["openid", "profile", "email"],
             "deliver": {
-              "variables": {
-                "issuerUrl": "takosumi_accounts_issuer_url",
-                "clientId": "takosumi_accounts_client_id"
+              "bindings": {
+                "issuerUrl": "OIDC_ISSUER_URL",
+                "clientId": "OIDC_CLIENT_ID",
+                "ownerSubject": "OIDC_OWNER_SUB",
+                "redirectUri": "OIDC_REDIRECT_URI"
               }
             }
           }
         ],
         "interfaces": [
+          {
+            "key": "launcher",
+            "name": "takos-storage.launcher",
+            "spec": {
+              "type": "interface.ui.surface",
+              "version": "1",
+              "document": {
+                "launcher": true,
+                "display": {
+                  "title": "Takos Storage"
+                }
+              },
+              "inputs": {
+                "url": {
+                  "source": "output",
+                  "outputName": "launch_url",
+                  "outputType": "url"
+                }
+              },
+              "access": {
+                "visibility": "workspace"
+              }
+            },
+            "bindingRequests": [
+              {
+                "key": "installer",
+                "subject": {
+                  "source": "installing_principal"
+                },
+                "permissions": ["ui.open"],
+                "delivery": {
+                  "type": "none"
+                }
+              }
+            ]
+          },
           {
             "key": "object",
             "name": "takos-storage.object",
@@ -295,7 +349,9 @@
               "version": "1",
               "document": {
                 "protocol": "http.object",
-                "display": { "title": "Takos Storage Object API" }
+                "display": {
+                  "title": "Takos Storage Object API"
+                }
               },
               "inputs": {
                 "endpoint": {
@@ -318,7 +374,9 @@
               "version": "2025-11-25",
               "document": {
                 "transport": "streamable-http",
-                "display": { "title": "Takos Storage" }
+                "display": {
+                  "title": "Takos Storage"
+                }
               },
               "inputs": {
                 "endpoint": {
@@ -335,13 +393,28 @@
             "bindingRequests": [
               {
                 "key": "installer",
-                "subject": { "source": "installing_principal" },
+                "subject": {
+                  "source": "installing_principal"
+                },
                 "permissions": ["mcp.invoke"],
-                "delivery": { "type": "oauth2" }
+                "delivery": {
+                  "type": "oauth2"
+                }
               }
             ]
           }
-        ]
+        ],
+        "sourceBuild": {
+          "commands": [
+            {
+              "argv": ["bun", "install", "--frozen-lockfile"]
+            },
+            {
+              "argv": ["bun", "run", "build:worker"]
+            }
+          ],
+          "outputs": ["dist/worker.js"]
+        }
       }
     }
   }

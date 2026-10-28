@@ -115,7 +115,9 @@ tofu init -backend=false -lockfile=readonly
 tofu validate
 ```
 
-release tag と `package.json` は同じ version にします。release workflow は
-`worker.js`、SHA-256、`takosumi-artifact.json` を公開します。Hosted install runner は
-その exact bytes を selected Host の artifact API に commit し、module に
-`worker_bundle_manifest_digest` を渡してから Plan を開始します。
+direct Cloudflare向けのrelease tagと `package.json` は同じversionにします。
+release workflowは `worker.js`、SHA-256、`takosumi-artifact.json` を公開します。
+portable `deploy/takoform` は選択したsourceの `sourceBuild` でWorkerを構築し、
+Provider 4.1.0でそのbytesをHostへ渡します。旧 `worker_bundle_manifest_digest`
+入力や既存tagの上書きは使いません。実Hostのruntime-input能力と正規Plan/Applyの
+成立は、source/合成回帰とは別に確認します。
