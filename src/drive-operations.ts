@@ -53,7 +53,7 @@ export async function deleteDriveObject(
   const tombstone = await bucket.put(key, "", {
     httpMetadata: { contentType: "application/octet-stream" },
     customMetadata: { [DELETION_MARKER]: "1" },
-    onlyIf: { etagMatches: expectedEtag },
+    onlyIf: new Headers({ "if-match": expectedEtag }),
   });
   if (!tombstone) {
     throw new DriveOperationError(

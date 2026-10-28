@@ -62,6 +62,12 @@ const CATALOGS = {
     errLoad: "Couldn't load your files.",
     errUpload: "Upload failed: {name}",
     errAction: "The operation failed.",
+    errConflict:
+      "The file revision or destination no longer matches this action. Review the refreshed list before trying again.",
+    errRevision:
+      "The file revision is unavailable. Refresh the list before trying again.",
+    folderOperationUnsupported:
+      "This API version does not support renaming or deleting a whole folder. Operate on individual files instead.",
     upTrayTitle: "Uploads",
     upDone: "Done",
     upFailed: "Failed",
@@ -125,6 +131,12 @@ const CATALOGS = {
     errLoad: "ファイルを読み込めませんでした。",
     errUpload: "アップロードに失敗: {name}",
     errAction: "操作に失敗しました。",
+    errConflict:
+      "ファイルの版または保存先の条件が一致しません。更新された一覧を確認してやり直してください。",
+    errRevision:
+      "ファイルの版を確認できません。一覧を更新してやり直してください。",
+    folderOperationUnsupported:
+      "このAPI版ではフォルダ全体の名前変更・削除は利用できません。個別のファイルを操作してください。",
     upTrayTitle: "アップロード",
     upDone: "完了",
     upFailed: "失敗",
@@ -670,7 +682,7 @@ export function storageConsoleHtml(): string {
 
   // ---- State ----
   var state = {
-    files: [],            // [{path,size,uploaded}] relative to the drive root
+    files: [],            // [{path,size,uploaded,etag}] relative to the drive root
     truncated: false,
     nav: "files",        // files | recent
     path: "",            // current folder, "" or "a/b/"
@@ -770,6 +782,18 @@ export function storageConsoleHtml(): string {
   function fileUrl(path) {
     return "/api/drive/file/" + encodeURIComponent(path);
   }
+  function checkMutationResponse(response) {
+    if (!response.ok) {
+      var error = new Error("http " + response.status);
+      error.status = response.status;
+      throw error;
+    }
+    return response;
+  }
+  function mutationFailed(error) {
+    toast(t(error && (error.status === 412 || error.status === 409) ? "errConflict" : "errAction"));
+    load();
+  }
 
   // ---- Session boot ----
   function boot() {
@@ -839,13 +863,13 @@ export function storageConsoleHtml(): string {
         if (!f.path || f.path.slice(-1) === "/") return;
         var name = f.path.slice(f.path.lastIndexOf("/") + 1);
         if (name.toLowerCase().indexOf(q) < 0) return;
-        items.push({ type: "file", name: name, path: f.path, size: f.size, uploaded: f.uploaded, sub: f.path.slice(0, f.path.lastIndexOf("/") + 1) });
+        items.push({ type: "file", name: name, path: f.path, size: f.size, uploaded: f.uploaded, etag: f.etag, sub: f.path.slice(0, f.path.lastIndexOf("/") + 1) });
       });
     } else if (state.nav === "recent") {
       state.files.forEach(function (f) {
         if (!f.path || f.path.slice(-1) === "/") return;
         var name = f.path.slice(f.path.lastIndexOf("/") + 1);
-        items.push({ type: "file", name: name, path: f.path, size: f.size, uploaded: f.uploaded, sub: f.path.slice(0, f.path.lastIndexOf("/") + 1) });
+        items.push({ type: "file", name: name, path: f.path, size: f.size, uploaded: f.uploaded, etag: f.etag, sub: f.path.slice(0, f.path.lastIndexOf("/") + 1) });
       });
       items.sort(function (a, b) { return (Date.parse(b.uploaded) || 0) - (Date.parse(a.uploaded) || 0); });
       return items.slice(0, 50);
@@ -858,12 +882,13 @@ export function storageConsoleHtml(): string {
         if (!rest) return; // marker for this folder itself
         var slash = rest.indexOf("/");
         if (slash < 0) {
-          items.push({ type: "file", name: rest, path: f.path, size: f.size, uploaded: f.uploaded });
+          items.push({ type: "file", name: rest, path: f.path, size: f.size, uploaded: f.uploaded, etag: f.etag });
         } else {
           var name = rest.slice(0, slash);
           var folder = folders[name];
-          if (!folder) folder = folders[name] = { type: "folder", name: name, path: base + name + "/", size: 0, count: 0, uploaded: "" };
+          if (!folder) folder = folders[name] = { type: "folder", name: name, path: base + name + "/", size: 0, count: 0, uploaded: "", etag: null };
           if (rest.length > slash + 1) { folder.count += 1; folder.size += f.size || 0; }
+          else folder.etag = f.etag;
           if (!folder.uploaded || Date.parse(f.uploaded) > Date.parse(folder.uploaded)) folder.uploaded = f.uploaded;
         }
       });
@@ -1148,6 +1173,13 @@ export function storageConsoleHtml(): string {
     if (!item) return;
     menuTarget = item;
     itemMenu.querySelector('[data-action="download"]').hidden = item.type === "folder";
+    ["rename", "delete"].forEach(function (action) {
+      var button = itemMenu.querySelector('[data-action="' + action + '"]');
+      button.disabled = item.type === "folder" || !item.etag;
+      button.title = button.disabled ? t(item.type === "folder" ? "folderOperationUnsupported" : "errRevision") : "";
+    });
+    if (item.type === "folder") toast(t("folderOperationUnsupported"));
+    else if (!item.etag) toast(t("errRevision"));
     openMenuAt(itemMenu, kebab);
   }, true);
 
@@ -1215,18 +1247,21 @@ export function storageConsoleHtml(): string {
       trayList.appendChild(li);
       api(fileUrl(state.path + file.name), {
         method: "PUT",
-        headers: { "content-type": file.type || "application/octet-stream" },
+        headers: {
+          "content-type": file.type || "application/octet-stream",
+          "if-none-match": "*",
+        },
         body: file,
       }).then(function (r) {
-        if (!r.ok) throw new Error("http " + r.status);
+        checkMutationResponse(r);
         li.querySelector(".spin").remove();
         li.querySelector(".tray-status").textContent = t("upDone");
         li.querySelector(".tray-status").className = "tray-status ok";
-      }).catch(function () {
+      }).catch(function (error) {
         li.querySelector(".spin").remove();
         li.querySelector(".tray-status").textContent = t("upFailed");
         li.querySelector(".tray-status").className = "tray-status fail";
-        toast(t("errUpload", { name: file.name }));
+        toast(error && error.status === 412 ? t("errConflict") : t("errUpload", { name: file.name }));
       }).finally(function () {
         pending -= 1;
         if (pending === 0) load();
@@ -1323,32 +1358,6 @@ export function storageConsoleHtml(): string {
     });
   });
 
-  function pathsUnder(prefix) {
-    return state.files.filter(function (f) { return f.path.indexOf(prefix) === 0; })
-      .map(function (f) { return f.path; });
-  }
-  function sequential(paths, fn) {
-    return paths.reduce(function (p, path) {
-      return p.then(function () { return fn(path); });
-    }, Promise.resolve());
-  }
-  function copyFile(fromPath, toPath) {
-    // The drive surface has no server-side copy; stream through the browser.
-    return api(fileUrl(fromPath)).then(function (r) {
-      if (!r.ok) throw new Error("http " + r.status);
-      var contentType = r.headers.get("content-type") || "application/octet-stream";
-      return r.blob().then(function (blob) {
-        return api(fileUrl(toPath), {
-          method: "PUT",
-          headers: { "content-type": contentType },
-          body: blob,
-        });
-      });
-    }).then(function (r) {
-      if (!r.ok) throw new Error("http " + r.status);
-    });
-  }
-
   nameForm.addEventListener("submit", function (e) {
     var name = nameInput.value.trim();
     if (!name) return;
@@ -1360,48 +1369,47 @@ export function storageConsoleHtml(): string {
     if (nameMode === "folder") {
       api(fileUrl(state.path + name + "/"), {
         method: "PUT",
-        headers: { "content-type": "application/x-directory" },
+        headers: {
+          "content-type": "application/x-directory",
+          "if-none-match": "*",
+        },
         body: "",
       }).then(function (r) {
-        if (!r.ok) throw new Error("http " + r.status);
+        checkMutationResponse(r);
         load();
-      }).catch(function () { toast(t("errAction")); });
+      }).catch(mutationFailed);
       return;
     }
     // rename
     var item = actionTarget;
     if (!item || name === item.name) return;
-    if (item.type === "file") {
-      var parent = item.path.slice(0, item.path.lastIndexOf("/") + 1);
-      copyFile(item.path, parent + name).then(function () {
-        return api(fileUrl(item.path), { method: "DELETE" });
-      }).then(function () { load(); }).catch(function () { toast(t("errAction")); load(); });
-    } else {
-      var oldPrefix = item.path;
-      var parentPrefix = oldPrefix.slice(0, oldPrefix.slice(0, -1).lastIndexOf("/") + 1);
-      var newPrefix = parentPrefix + name + "/";
-      sequential(pathsUnder(oldPrefix), function (path) {
-        var target = newPrefix + path.slice(oldPrefix.length);
-        var move = path === oldPrefix
-          ? api(fileUrl(newPrefix), { method: "PUT", headers: { "content-type": "application/x-directory" }, body: "" }).then(function () {})
-          : copyFile(path, target);
-        return move.then(function () {
-          return api(fileUrl(path), { method: "DELETE" });
-        });
-      }).then(function () { load(); }).catch(function () { toast(t("errAction")); load(); });
-    }
+    if (item.type === "folder") { toast(t("folderOperationUnsupported")); return; }
+    if (!item.etag) { toast(t("errRevision")); load(); return; }
+    var parent = item.path.slice(0, item.path.lastIndexOf("/") + 1);
+    // Existing server-side CAS move copies create-only, checks the exact source
+    // revision, and compensates a stale-source copy. Never emulate it with an
+    // unguarded browser copy/delete sequence.
+    api("/api/drive/move", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        source_path: item.path,
+        destination_path: parent + name,
+        source_etag: item.etag,
+      }),
+    }).then(checkMutationResponse).then(function () { load(); }).catch(mutationFailed);
   });
 
   deleteConfirm.addEventListener("click", function () {
     var item = actionTarget;
     deleteDialog.close();
     if (!item) return;
-    var paths = item.type === "folder" ? pathsUnder(item.path) : [item.path];
-    sequential(paths, function (path) {
-      return api(fileUrl(path), { method: "DELETE" }).then(function (r) {
-        if (!r.ok && r.status !== 404) throw new Error("http " + r.status);
-      });
-    }).then(function () { load(); }).catch(function () { toast(t("errAction")); load(); });
+    if (item.type === "folder") { toast(t("folderOperationUnsupported")); return; }
+    if (!item.etag) { toast(t("errRevision")); load(); return; }
+    api(fileUrl(item.path), {
+      method: "DELETE",
+      headers: { "if-match": item.etag },
+    }).then(checkMutationResponse).then(function () { load(); }).catch(mutationFailed);
   });
 
   // ---- Boot ----

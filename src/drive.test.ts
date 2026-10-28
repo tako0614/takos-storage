@@ -51,6 +51,11 @@ class MemoryBucket implements R2Bucket {
   ): Promise<R2Object | null> {
     const current = this.store.get(key);
     const onlyIf = options?.onlyIf;
+    // Match the native R2 boundary: object-form ETags are unquoted; HTTP
+    // quoted validators must be carried through the Headers overload.
+    if (!(onlyIf instanceof Headers) && onlyIf?.etagMatches?.startsWith('"')) {
+      throw new TypeError("Conditional ETag should not be wrapped in quotes");
+    }
     const ifMatch =
       onlyIf instanceof Headers ? onlyIf.get("if-match") : onlyIf?.etagMatches;
     const ifNoneMatch =

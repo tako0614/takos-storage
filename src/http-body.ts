@@ -28,19 +28,28 @@ export class RequestBodyTooLargeError extends Error {
 }
 
 export type BoundedRequestBody =
-  | { readonly ok: true; readonly body: ReadableStream<Uint8Array> | string }
+  | {
+      readonly ok: true;
+      readonly body: ReadableStream<Uint8Array> | ArrayBuffer | string;
+      readonly dispose: () => Promise<void>;
+    }
   | { readonly ok: false; readonly status: 400 | 413; readonly error: string };
 
 /**
  * Reject a declared oversize before touching R2, then count every streamed
  * byte so chunked requests cannot bypass the same limit. A stream error aborts
- * R2.put rather than publishing a partial object.
+ * R2.put rather than publishing a partial object. Native R2 requires a known
+ * body length: declared uploads keep streaming through FixedLengthStream;
+ * headerless uploads are collected behind the same byte limit before storage
+ * is called. Callers dispose the pipeline even when R2 refuses a precondition
+ * without consuming it.
  */
-export function boundedRequestBody(
+export async function boundedRequestBody(
   request: Request,
   maximumBytes = MAX_STORED_OBJECT_BYTES,
-): BoundedRequestBody {
+): Promise<BoundedRequestBody> {
   const rawLength = request.headers.get("content-length");
+  let declaredLength: number | undefined;
   if (rawLength !== null) {
     if (!/^[0-9]+$/u.test(rawLength)) {
       return { ok: false, status: 400, error: "invalid_content_length" };
@@ -52,9 +61,13 @@ export function boundedRequestBody(
     if (declared > maximumBytes) {
       return { ok: false, status: 413, error: "object_too_large" };
     }
+    declaredLength = declared;
   }
 
-  if (!request.body) return { ok: true, body: "" };
+  if (!request.body) return { ok: true, body: "", dispose: async () => {} };
+  if (declaredLength === undefined) {
+    return readBoundedBuffer(request.body, maximumBytes);
+  }
   let received = 0;
   const limiter = new TransformStream<Uint8Array, Uint8Array>({
     transform(chunk, controller) {
@@ -66,7 +79,62 @@ export function boundedRequestBody(
       controller.enqueue(chunk);
     },
   });
-  return { ok: true, body: request.body.pipeThrough(limiter) };
+  const limited = request.body.pipeThrough(limiter);
+  const FixedLength = (
+    globalThis as {
+      FixedLengthStream?: new (
+        length: number,
+      ) => ReadableWritablePair<Uint8Array, Uint8Array>;
+    }
+  ).FixedLengthStream;
+  const body = FixedLength
+    ? limited.pipeThrough(new FixedLength(declaredLength))
+    : limited;
+  return {
+    ok: true,
+    body,
+    async dispose() {
+      if (body.locked) return;
+      try {
+        await body.cancel();
+      } catch {
+        // Cancellation repeats an already-reported stream read error. Never
+        // replace the caller's storage failure or conditional-write response.
+      }
+    },
+  };
+}
+
+async function readBoundedBuffer(
+  body: ReadableStream<Uint8Array>,
+  maximumBytes: number,
+): Promise<BoundedRequestBody> {
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      received += chunk.value.byteLength;
+      if (received > maximumBytes) {
+        // Release the actual request reader before returning a size refusal;
+        // the runtime must still be able to finish/drain this HTTP request.
+        await reader.cancel().catch(() => undefined);
+        return { ok: false, status: 413, error: "object_too_large" };
+      }
+      chunks.push(chunk.value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(received);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return { ok: true, body: bytes.buffer, dispose: async () => {} };
 }
 
 export function conditionalWriteHeaders(request: Request): Headers | undefined {
