@@ -34,10 +34,11 @@ test("Takos Storage publishes a closed Repository manifest", () => {
   }
 });
 
-test("default portable install declares object and agent MCP Interfaces", () => {
+test("default portable install declares launcher, object and agent MCP Interfaces", () => {
   const interfaces =
     manifest.install.modules["deploy/takoform"]?.interfaces ?? [];
   expect(interfaces.map((entry) => entry.spec.type)).toEqual([
+    "interface.ui.surface",
     "storage.object",
     "mcp.server",
   ]);
@@ -52,6 +53,51 @@ test("default portable install declares object and agent MCP Interfaces", () => 
       delivery: { type: "oauth2" },
     },
   ]);
+});
+
+test("each install module declares an installer-authorized launcher backed by launch_url", async () => {
+  for (const [path, module] of Object.entries(manifest.install.modules)) {
+    const launchers = (module.interfaces ?? []).filter(
+      (entry) => entry.spec.type === "interface.ui.surface",
+    );
+    expect(launchers).toEqual([
+      {
+        key: "launcher",
+        name: "takos-storage.launcher",
+        spec: {
+          type: "interface.ui.surface",
+          version: "1",
+          document: {
+            launcher: true,
+            display: { title: "Takos Storage" },
+          },
+          inputs: {
+            url: {
+              source: "output",
+              outputName: "launch_url",
+              outputType: "url",
+            },
+          },
+          access: { visibility: "workspace" },
+        },
+        bindingRequests: [
+          {
+            key: "installer",
+            subject: { source: "installing_principal" },
+            permissions: ["ui.open"],
+            delivery: { type: "none" },
+          },
+        ],
+      },
+    ]);
+    const outputs = await readFile(new URL(`${path}/outputs.tf`, root), "utf8");
+    const launchOutput = outputs.match(
+      /output\s+"launch_url"\s*\{([^}]*)\}/u,
+    )?.[1];
+    expect(launchOutput).toBeDefined();
+    expect(launchOutput).toMatch(/\bvalue\s*=/u);
+    expect(launchOutput).not.toMatch(/\b(?:sensitive|ephemeral)\s*=\s*true/u);
+  }
 });
 
 test("declared modules reference real variables and no secret or host authority", () => {
@@ -129,10 +175,17 @@ interface RepositoryModule {
     }>;
   };
   interfaces?: Array<{
+    key: string;
+    name: string;
     spec: {
       type: string;
       version: string;
-      inputs: Record<string, { outputName?: string }>;
+      document: Record<string, unknown>;
+      inputs: Record<
+        string,
+        { source: string; outputName?: string; outputType?: string }
+      >;
+      access: { visibility: string; resourceUriInput?: string };
     };
     bindingRequests?: Array<Record<string, unknown>>;
   }>;
