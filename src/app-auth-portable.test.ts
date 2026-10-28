@@ -246,6 +246,26 @@ describe("portable registered OIDC runtime inputs", () => {
     ).toBe(302);
   });
 
+  test.each([
+    "http://installed-storage.example",
+    "https://installed-storage.example/path",
+  ])(
+    "reports invalid explicit APP_URL %s without blaming valid delivery",
+    async (value) => {
+      const response = await worker.fetch(req("/api/auth/login"), {
+        ...env,
+        APP_URL: value,
+      });
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({
+        error: "app_auth_not_configured",
+        invalid: ["APP_URL"],
+      });
+      expect(response.headers.get("location")).toBeNull();
+      expect(response.headers.get("set-cookie")).toBeNull();
+    },
+  );
+
   test("callback rejects tampered and expired state without token exchange", async () => {
     const login = await worker.fetch(req("/api/auth/login"), env);
     const state = new URL(login.headers.get("location")!).searchParams.get(

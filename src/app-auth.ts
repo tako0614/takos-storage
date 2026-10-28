@@ -120,12 +120,21 @@ export function appAuthMisconfigured(env: Env): Response | null {
       invalid.push(name);
     }
   }
-  try {
-    callbackUrl(env);
-  } catch {
-    invalid.push(
-      config.redirectUri !== undefined ? "OIDC_REDIRECT_URI" : "APP_URL",
-    );
+  if (config.appUrl !== undefined) {
+    try {
+      canonicalBareHttpsOrigin(config.appUrl, "APP_URL");
+    } catch {
+      invalid.push("APP_URL");
+    }
+  }
+  if (!invalid.includes("APP_URL")) {
+    try {
+      callbackUrl(env);
+    } catch {
+      invalid.push(
+        config.redirectUri !== undefined ? "OIDC_REDIRECT_URI" : "APP_URL",
+      );
+    }
   }
   return invalid.length > 0
     ? Response.json(

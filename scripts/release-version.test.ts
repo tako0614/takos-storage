@@ -13,7 +13,7 @@ const packageVersion = (JSON.parse(packageSource) as { version: string })
   .version;
 
 describe("release version", () => {
-  test("requires an explicitly reviewed primary artifact and keeps the Takoform declaration aligned", () => {
+  test("requires a reviewed direct artifact and builds the portable artifact from selected source", () => {
     const releaseVariable = moduleSource.match(
       /variable\s+"worker_release_tag"\s*\{([\s\S]*?)\n\}/,
     )?.[1];
@@ -24,9 +24,9 @@ describe("release version", () => {
     );
 
     expect(takoformModuleSource).toContain(
-      'variable "worker_bundle_manifest_digest"',
+      'content_file = "${path.module}/../../dist/worker.js"',
     );
-    expect(takoformModuleSource).toMatch(/default\s+=\s+"sha256:[a-f0-9]{64}"/);
+    expect(takoformModuleSource).not.toContain("worker_bundle_manifest_digest");
     expect(takoformModuleSource).not.toContain("/releases/download/");
     expect(outputsSource).not.toContain("app_deployment");
     expect(outputsSource).not.toContain("service_exports");
