@@ -2,15 +2,15 @@
 # Manual edits may be lost in future updates.
 
 provider "registry.terraform.io/tako0614/takoform" {
-  version     = "2.1.1"
-  constraints = "2.1.1"
+  version     = "4.1.0"
+  constraints = "4.1.0"
   hashes = [
-    "h1:EB58ej8cod9fVaA0/WYY1/+FsPJYRgFjhUFGGw/6wpI=",
-    "zh:1754ec427c6449acb28b316b257385628166effdbfbaf9f2ab4e33df69914210",
-    "zh:6aaff46bfe34c1dc5f4be75e5fc2abf896feefdb2f6a7a7ee42b54829d76963f",
-    "zh:92346100be2fcc867e41aec030724632385864b8d4a6f651baeb4c8647947375",
-    "zh:9fdbd4450dd9fb7b0652fff16ed7bae9c4de051069f55e37d036d79c3e77dd75",
-    "zh:b2f7c944a349fc7317ef9394046899f073fc4df6ce9f8be082b4427dec2ad526",
+    "h1:fLHM9evf8DDHuqN5acpvCo4BUwHqhO+navQo1WjCYhs=",
+    "zh:0646ceaace67087668140f30e22f5fd0e58f1677e8d8d3e1f8bb110ef515efa6",
+    "zh:1d1132ae8267747cab107ee8864b5cf47daf54239004115b69e5e2863834f7ee",
+    "zh:1f3211fed5c3532e198c19af8e1b2a7096127f3bcfb5751a3233933625a531d5",
+    "zh:5e4d9d5e19669251239d4e1244bfe76e57ff678bd0691ecfa40f2381b1b640e2",
+    "zh:c653b65f4b768598ed705d8452ed3c1cd4eb3871bd105f857614c23879431bb6",
     "zh:f809ab383cca0a5f83072981c64208cbd7fa67e986a86ee02dd2c82333221e32",
   ]
 }
