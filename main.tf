@@ -98,12 +98,31 @@ variable "env" {
         "PUBLISHED_MCP_AUTH_TOKEN",
         "OIDC_ISSUER_URL",
         "OIDC_CLIENT_ID",
+        "OIDC_REDIRECT_URI",
         "ALLOW_UNAUTHENTICATED_DRIVE",
         "APP_WORKSPACE_ID",
         "APP_CAPSULE_ID",
       ], name)
     ])
     error_message = "env keys must be uppercase Worker plain-text variable names and must not be secret-like or reserved by the takos-storage module."
+  }
+}
+
+# Public OIDC grant metadata delivered by the installer (not credentials).
+variable "takosumi_accounts_url" {
+  description = "Accounts URL allocated by the installer's reviewed OIDC grant."
+  type        = string
+  default     = ""
+}
+
+variable "takosumi_accounts_redirect_uri" {
+  description = "Registered callback metadata; the direct adapter derives its callback from public_url."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = trimspace(var.takosumi_accounts_redirect_uri) == "" || can(regex("^https://[^/?#@]+/api/auth/callback/takos$", var.takosumi_accounts_redirect_uri))
+    error_message = "takosumi_accounts_redirect_uri must be empty or the registered HTTPS /api/auth/callback/takos URI."
   }
 }
 
@@ -387,6 +406,13 @@ resource "cloudflare_workers_script" "worker" {
         text = local.provided_session_secret
       },
     ] : [],
+    local.app_auth_enabled && trimspace(var.takosumi_accounts_redirect_uri) != "" ? [
+      {
+        type = "plain_text"
+        name = "OIDC_REDIRECT_URI"
+        text = trimspace(var.takosumi_accounts_redirect_uri)
+      },
+    ] : [],
     local.app_auth_enabled && trimspace(var.takosumi_accounts_client_secret) != "" ? [
       {
         type = "secret_text"
@@ -404,6 +430,10 @@ resource "cloudflare_workers_script" "worker" {
   )
 
   lifecycle {
+    precondition {
+      condition     = trimspace(var.takosumi_accounts_redirect_uri) == "" || var.takosumi_accounts_redirect_uri == "${trimsuffix(local.launch_url != null ? local.launch_url : "", "/")}/api/auth/callback/takos"
+      error_message = "The registered Accounts callback must match the canonical storage public URL."
+    }
     precondition {
       condition = !local.cloudflare_worker_enabled || (
         local.launch_url != null &&

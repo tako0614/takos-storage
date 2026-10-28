@@ -74,6 +74,10 @@ export interface Env {
   OIDC_ISSUER_URL?: string;
   /** OIDC client id (public client; PKCE). */
   OIDC_CLIENT_ID?: string;
+  /** Exact callback registered by the installer's host-authoritative OIDC delivery. */
+  OIDC_REDIRECT_URI?: string;
+  /** Pairwise registration metadata only; never a permission or Workspace id. */
+  OIDC_OWNER_SUB?: string;
   /** Optional OIDC client secret for confidential clients. */
   OIDC_CLIENT_SECRET?: string;
   /** HMAC secret sealing the session + OAuth state cookies. */
