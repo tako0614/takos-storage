@@ -1,0 +1,8 @@
+# TASK-0118: installed app browser sign-in claims
+
+- Scope: takos-storage Phase 7, coordinated with the Takosumi app ownership migration. Takosumi owns claim issuance; this repository owns browser sessions and Drive access. No other repository is edited here.
+- Authorization: match `takosumi.capsule_id` to configured `APP_CAPSULE_ID`; preserve only `owner`/`member` management roles. An absent role keeps the ordinary authenticated Drive rule. There is no separate Storage management surface. Foreign or malformed app claims cannot use Workspace compatibility.
+- Compatibility: existing Workspace-only claims and session cookies retain the configured `APP_WORKSPACE_ID` membership rule and never gain an app role. Interface OAuth authority is unchanged.
+- Runtime: the direct module already binds `APP_CAPSULE_ID` beside `APP_WORKSPACE_ID`. The current portable v2.4 runtime identity recipe delivers no expected Capsule id; new app claims fail closed unless supported runtime configuration supplies one. No unsupported manifest input source or inferred expected id is added.
+- Coordination: PRs #11 and #12 were merged before this work; the portable branch tree matched origin/main. Active console work owns `src/console.ts`, `src/drive.ts`, and `src/console-cas.test.ts`; none is edited here. The coordination evidence and exact proposed diff are in the operator handoff under `/root/dev/tmp/tk0118/E-storage-coordination.json`.
+- Validation: focused app auth and runtime configuration tests; touched TypeScript/Markdown formatting and type check. The complete repository gate runs in PR CI under the task's local resource limit. No deployment, live sign-in, provider, credentials, or database changes.

@@ -1,11 +1,13 @@
 /**
- * User-facing OIDC session auth for the workspace drive surface.
+ * User-facing OIDC session auth for the installed app drive surface.
  *
  * A dependency-free port of the ecosystem app-auth pattern (Takosumi
  * Accounts authorization-code + PKCE, HMAC-sealed cookies) for a plain
  * fetch-handler Worker. Auth is ON by default: the drive UI and /api/drive
- * routes require a signed session cookie, and — when APP_WORKSPACE_ID is set —
- * membership of that workspace. An install that omits the Accounts wiring
+ * routes require a signed session cookie. App claims must match APP_CAPSULE_ID;
+ * owner/member roles describe management access, while an absent role retains
+ * ordinary signed-in Drive access. Legacy sessions still honor APP_WORKSPACE_ID.
+ * An install that omits the Accounts wiring
  * fails loudly with 503 (see appAuthMisconfigured) instead of serving the
  * drive anonymously; a deliberately public drive takes the explicit
  * ALLOW_UNAUTHENTICATED_DRIVE opt-in.
@@ -21,10 +23,14 @@ const STATE_COOKIE = "takos_app_oauth_state";
 const SESSION_MAX_AGE_SECONDS = 12 * 60 * 60;
 const STATE_MAX_AGE_SECONDS = 10 * 60;
 
+export type AppRole = "owner" | "member";
+
 export interface AppSession {
   sub: string;
   name?: string;
   workspaceIds: string[];
+  capsuleId?: string;
+  appRole?: AppRole;
   exp: number;
 }
 
@@ -59,6 +65,7 @@ function authConfig(env: Env) {
     clientSecret: envValue(env, "OIDC_CLIENT_SECRET"),
     sessionSecret: envValue(env, "APP_SESSION_SECRET"),
     workspaceId: envValue(env, "APP_WORKSPACE_ID"),
+    capsuleId: envValue(env, "APP_CAPSULE_ID"),
   };
 }
 
@@ -367,6 +374,28 @@ function normalizeWorkspaceIds(value: unknown): string[] {
   return [...seen];
 }
 
+function parseAppClaims(
+  value: unknown,
+): Pick<AppSession, "capsuleId" | "appRole"> | null {
+  if (value === undefined) return {};
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const claims = value as Record<string, unknown>;
+  if (!("capsule_id" in claims || "app_role" in claims)) return {};
+  if (
+    typeof claims.capsule_id !== "string" ||
+    claims.capsule_id.trim() === "" ||
+    (claims.app_role !== undefined &&
+      claims.app_role !== "owner" &&
+      claims.app_role !== "member")
+  ) {
+    return null;
+  }
+  return {
+    capsuleId: claims.capsule_id,
+    ...(claims.app_role !== undefined ? { appRole: claims.app_role } : {}),
+  };
+}
+
 async function fetchUserInfo(env: Env, accessToken: string) {
   const userinfoEndpoint = issuerUrl(env, "/oauth/userinfo");
   const res = await fetch(userinfoEndpoint, {
@@ -379,7 +408,11 @@ async function fetchUserInfo(env: Env, accessToken: string) {
     sub?: string;
     name?: string;
     workspace_memberships?: unknown;
-    takosumi?: { workspace_id?: unknown };
+    takosumi?: {
+      workspace_id?: unknown;
+      capsule_id?: unknown;
+      app_role?: unknown;
+    };
   };
   const sub = body.user?.id ?? body.sub;
   if (!sub) throw new Error("OAuth userinfo response missing subject");
@@ -392,7 +425,12 @@ async function fetchUserInfo(env: Env, accessToken: string) {
   ) {
     workspaceIds.push(nestedWorkspaceId);
   }
-  return { sub, name: body.user?.name ?? body.name, workspaceIds };
+  return {
+    sub,
+    name: body.user?.name ?? body.name,
+    workspaceIds,
+    appClaims: parseAppClaims(body.takosumi),
+  };
 }
 
 // ---- Guard + session lookup --------------------------------------------------
@@ -422,6 +460,34 @@ export async function getAppSession(
   return session;
 }
 
+function sessionAccessDenied(env: Env, session: AppSession): Response | null {
+  const config = authConfig(env);
+  if (session.capsuleId !== undefined || session.appRole !== undefined) {
+    if (
+      !config.capsuleId ||
+      session.capsuleId !== config.capsuleId ||
+      (session.appRole !== undefined &&
+        session.appRole !== "owner" &&
+        session.appRole !== "member")
+    ) {
+      return Response.json({ error: "app_access_denied" }, { status: 403 });
+    }
+    // Drive's own rule is an authenticated session. App management membership
+    // does not replace that rule or create any additional storage authority.
+    return null;
+  }
+  const memberships = Array.isArray(session.workspaceIds)
+    ? session.workspaceIds
+    : [];
+  if (config.workspaceId && !memberships.includes(config.workspaceId)) {
+    return Response.json(
+      { error: "workspace_membership_required" },
+      { status: 403 },
+    );
+  }
+  return null;
+}
+
 /** Null when the request may proceed; otherwise the 401/403/503 to return. */
 export async function requireAppAuth(
   env: Env,
@@ -434,18 +500,7 @@ export async function requireAppAuth(
   const session = await getAppSession(env, request);
   if (!session)
     return Response.json({ error: "unauthorized" }, { status: 401 });
-  if (config.workspaceId) {
-    const memberships = Array.isArray(session.workspaceIds)
-      ? session.workspaceIds
-      : [];
-    if (!memberships.includes(config.workspaceId)) {
-      return Response.json(
-        { error: "workspace_membership_required" },
-        { status: 403 },
-      );
-    }
-  }
-  return null;
+  return sessionAccessDenied(env, session);
 }
 
 // ---- Routes ------------------------------------------------------------------
@@ -465,19 +520,15 @@ export async function handleAuthRoute(
     const session = await getAppSession(env, request);
     if (!session)
       return Response.json({ error: "unauthorized" }, { status: 401 });
-    if (
-      config.workspaceId &&
-      !session.workspaceIds?.includes(config.workspaceId)
-    ) {
-      return Response.json(
-        { error: "workspace_membership_required" },
-        { status: 403 },
-      );
-    }
+    const denied = sessionAccessDenied(env, session);
+    if (denied) return denied;
     return Response.json({
       required: true,
       sub: session.sub,
       name: session.name ?? null,
+      ...(session.capsuleId !== undefined
+        ? { appRole: session.appRole ?? null }
+        : {}),
     });
   }
 
@@ -551,16 +602,19 @@ export async function handleAuthRoute(
     }
     const accessToken = await exchangeCode(env, code, state.codeVerifier);
     const user = await fetchUserInfo(env, accessToken);
-    const session = await seal(
-      {
-        sub: user.sub,
-        name: user.name,
-        workspaceIds: user.workspaceIds,
-        exp: Math.floor(Date.now() / 1000) + SESSION_MAX_AGE_SECONDS,
-      } satisfies AppSession,
-      config.sessionSecret!,
-      "session",
-    );
+    if (user.appClaims === null) {
+      return Response.json({ error: "invalid_app_claim" }, { status: 403 });
+    }
+    const sessionData: AppSession = {
+      sub: user.sub,
+      name: user.name,
+      workspaceIds: user.workspaceIds,
+      ...user.appClaims,
+      exp: Math.floor(Date.now() / 1000) + SESSION_MAX_AGE_SECONDS,
+    };
+    const denied = sessionAccessDenied(env, sessionData);
+    if (denied) return denied;
+    const session = await seal(sessionData, config.sessionSecret!, "session");
     // Re-validate at emit time so a tampered/legacy state cookie can never
     // drive an external Location redirect.
     const headers = new Headers({ Location: safeReturnTo(state.returnTo) });

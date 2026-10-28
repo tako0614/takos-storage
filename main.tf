@@ -169,13 +169,13 @@ variable "app_session_secret" {
 }
 
 variable "takosumi_workspace_id" {
-  description = "Owning Takosumi Workspace id used to verify Interface OAuth evidence and optional drive membership."
+  description = "Compatibility Workspace id used to verify Interface OAuth evidence and legacy browser membership."
   type        = string
   default     = ""
 }
 
 variable "takosumi_capsule_id" {
-  description = "Owning Takosumi Capsule id used to verify Interface OAuth evidence."
+  description = "Installed Takosumi app id used to match browser app claims and Interface OAuth evidence."
   type        = string
   default     = ""
 }

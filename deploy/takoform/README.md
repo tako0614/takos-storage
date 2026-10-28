@@ -22,12 +22,18 @@ callback supplies the browser origin before Apply; no Request Host, guessed
 hostname, or post-Apply endpoint dependency supplies authentication authority.
 
 The installing subject is registration metadata, not an allowed-user list or a
-Workspace id. Accounts keeps its current Capsule-bound grant and Workspace
-membership checks. An explicit APP_WORKSPACE_ID retains the additional local
-membership restriction. Object and MCP Interface authorization remain separate;
-this declaration does not qualify their selected-host authority.
-The direct adapter retains its operator-provided APP_URL/session-secret and
-Workspace behavior, and validates any registered callback against that origin.
+Workspace id. Browser app claims must match an explicitly configured
+APP_CAPSULE_ID. An owner/member app_role is exposed by /api/auth/me; no role
+means ordinary signed-in Drive access and grants no management role. Legacy
+Workspace-only claims keep the APP_WORKSPACE_ID membership restriction.
+Object and MCP Interface authorization remain separate; this declaration does
+not qualify their selected-host authority. The current v2.4 portable identity
+recipe does not deliver an expected Capsule id, so it cannot accept app claims
+until that id is supplied by supported runtime configuration; it never trusts a
+claimed id as its expected id. The direct adapter binds APP_CAPSULE_ID beside
+APP_WORKSPACE_ID from its takosumi_capsule_id/takosumi_workspace_id inputs and
+retains its operator-provided APP_URL/session-secret. Any registered callback
+must match that origin.
 
 The selected Host must actually support Provider4 runtime inputs, its origin
 reservation, and the matching credential recipe. Source/compiler/local synthetic
