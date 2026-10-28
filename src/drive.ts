@@ -167,6 +167,7 @@ export async function handleDriveRoute(
           path: object.key.slice(DRIVE_PREFIX.length),
           size: object.size,
           uploaded: object.uploaded,
+          etag: object.httpEtag ?? null,
         })),
       truncated: listing.truncated,
       ...(listing.truncated && listing.cursor
@@ -178,7 +179,7 @@ export async function handleDriveRoute(
   if (url.pathname === MOVE_ROUTE) {
     if (request.method !== "POST")
       return json({ error: "method_not_allowed" }, 405);
-    const bounded = boundedRequestBody(request, MAX_MOVE_REQUEST_BYTES);
+    const bounded = await boundedRequestBody(request, MAX_MOVE_REQUEST_BYTES);
     if (!bounded.ok) return json({ error: bounded.error }, bounded.status);
     let input: unknown;
     try {
@@ -188,6 +189,8 @@ export async function handleDriveRoute(
         return json({ error: "request_too_large" }, 413);
       }
       return json({ error: "invalid_json" }, 400);
+    } finally {
+      await bounded.dispose();
     }
     if (
       typeof input !== "object" ||
@@ -267,7 +270,7 @@ export async function handleDriveRoute(
     const precondition = writePrecondition(request);
     if ("response" in precondition) return precondition.response;
     const contentType = storedContentType(request.headers.get("content-type"));
-    const body = boundedRequestBody(request);
+    const body = await boundedRequestBody(request);
     if (!body.ok) return json({ error: body.error }, body.status);
     try {
       const object = await env.BUCKET.put(key, body.body, {
@@ -281,6 +284,8 @@ export async function handleDriveRoute(
         return json({ error: "object_too_large" }, 413);
       }
       throw error;
+    } finally {
+      await body.dispose();
     }
   }
 

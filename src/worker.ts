@@ -238,7 +238,7 @@ async function fetchHandler(
   if (expectedPermission === "storage.object.write") {
     const contentType =
       request.headers.get("content-type") ?? "application/octet-stream";
-    const body = boundedRequestBody(request);
+    const body = await boundedRequestBody(request);
     if (!body.ok) return json({ error: body.error }, body.status);
     const onlyIf = conditionalWriteHeaders(request);
     try {
@@ -253,6 +253,8 @@ async function fetchHandler(
         return json({ error: "object_too_large" }, 413);
       }
       throw error;
+    } finally {
+      await body.dispose();
     }
   }
 
