@@ -18,7 +18,7 @@ managed runtime の `/o` と `/mcp` は Takosumi Accounts が発行する invoca
 - configured Capsule と non-empty Principal subject（Workspace は設定した場合だけ互換照合）
 - well-formed な Interface id / InterfaceBinding id / positive resolved revision evidence
 
-ブラウザーの shared Drive は private です。アプリにサインインできることと、Drive のデータを使えることは別で、app-scoped session の read/write は同じ subject・期待 Capsule・現在の owner/member を UserInfo で毎 request 確認します。一般利用者はサインイン後の `/api/auth/me` を利用できますが、共有 grant がないため Drive は 403 です。明示的な `ALLOW_UNAUTHENTICATED_DRIVE` の公開設定と旧 workspace-only cookie の互換規則は維持します。新 session 内の OAuth token は issuer/client/Capsule に結び付けた AES-GCM で暗号化します。
+ブラウザーの shared Drive は private です。アプリにサインインできることと、Drive のデータを使えることは別で、app-scoped session の read/write は同じ subject・期待 Capsule・現在の owner/member、または app_role 未発行時の同一 Workspace 会員を UserInfo で毎 request 確認します。一般利用者はサインイン後の `/api/auth/me` を利用できますが、共有 grant がないため Drive は 403 です。明示的な `ALLOW_UNAUTHENTICATED_DRIVE` の公開設定と旧 workspace-only cookie の互換規則は維持します。新 session 内の OAuth token は issuer/client/Capsule に結び付けた AES-GCM で暗号化します。UserInfo が token 期限切れなどで 401 を返すと session を削除し、既存 UI の再ログインへ進みます。
 
 `/o` の object は `interface-bindings/<binding-id>/` 以下に保存されるため、別の InterfaceBinding から同じ相対 key は見えません。旧 `tksvc_` HMAC、共有 signing key、standing admin token はありません。
 
@@ -32,7 +32,7 @@ service-side blueprint の対応は次の通りです（この表は module mani
 | MCP         | `mcp_url`          | `mcp.invoke`                                                                                  |
 | launcher UI | `launch_url`       | user navigation only                                                                          |
 
-両 module は install context の `takosumi_capsule_id` を `APP_CAPSULE_ID` へ渡し、ブラウザー app claim と Interface OAuth の対象 Capsule を必ず照合します。`takosumi_workspace_id` / `APP_WORKSPACE_ID` は旧 workspace 形式を照合する任意の互換設定です。Workspace を省略しても exact Capsule・audience・permission・InterfaceBinding evidence が揃えば利用できます。Accounts は UserInfo の成功応答前に Interface / InterfaceBinding / current resolved revision / subject / permission / resource ownership を Core で再検証します。Worker は完全な evidence shape を検証し、stale・revoked・廃止済みの credential を安全側に停止します。InterfaceBinding の grant/revoke/revision authority は Takosumi 側だけが持ちます。
+両 module は install context の `takosumi_capsule_id` を `APP_CAPSULE_ID` へ渡し、設定された場合はブラウザー app claim と Interface OAuth の対象 Capsule を必ず照合します。未設定の既存インストールは、設定済み `APP_WORKSPACE_ID` による旧経路を利用できます。`takosumi_workspace_id` / `APP_WORKSPACE_ID` は旧 workspace 形式を照合する任意の互換設定です。Workspace を省略しても exact Capsule・audience・permission・InterfaceBinding evidence が揃えば利用できます。Accounts は UserInfo の成功応答前に Interface / InterfaceBinding / current resolved revision / subject / permission / resource ownership を Core で再検証します。Worker は完全な evidence shape を検証し、stale・revoked・廃止済みの credential を安全側に停止します。InterfaceBinding の grant/revoke/revision authority は Takosumi 側だけが持ちます。
 
 direct/self-host の `/mcp` だけは、operator が `published_mcp_auth_token` を明示設定できます。空なら static bearer は生成も state 保存もされません。`/o` は常に Interface OAuth が必要です。
 
