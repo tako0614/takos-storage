@@ -17,6 +17,7 @@ import {
   hasValidInterfaceOAuthConfiguration,
 } from "./interface-oauth-auth.ts";
 import iconSvg from "../public/icons/takos-storage.svg" with { type: "text" };
+import { webAppAssetResponse } from "./web-app.ts";
 import {
   boundedRequestBody,
   conditionalWriteHeaders,
@@ -118,6 +119,8 @@ async function fetchHandler(
   if (request.method === "GET" && url.pathname === ICON_PATH) {
     return svgAsset(iconSvg);
   }
+  const webAppAsset = webAppAssetResponse(request, url.pathname);
+  if (webAppAsset) return webAppAsset;
   if (
     request.method === "GET" &&
     (url.pathname === "/" || url.pathname === "/ui")

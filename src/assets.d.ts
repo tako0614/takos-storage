@@ -3,3 +3,8 @@ declare module "*.svg" {
   const content: string;
   export default content;
 }
+
+declare module "*.webmanifest" {
+  const content: string;
+  export default content;
+}
