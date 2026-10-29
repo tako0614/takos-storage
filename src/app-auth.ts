@@ -1,11 +1,15 @@
 /**
- * User-facing OIDC session auth for the workspace drive surface.
+ * User-facing OIDC session auth for the installed app drive surface.
  *
  * A dependency-free port of the ecosystem app-auth pattern (Takosumi
  * Accounts authorization-code + PKCE, HMAC-sealed cookies) for a plain
  * fetch-handler Worker. Auth is ON by default: the drive UI and /api/drive
- * routes require a signed session cookie, and — when APP_WORKSPACE_ID is set —
- * membership of that workspace. An install that omits the Accounts wiring
+ * routes require a signed session cookie. App claims must match APP_CAPSULE_ID;
+ * sign-in accepts ordinary users, but the shared private Drive requires current
+ * owner/member status revalidated through UserInfo for each request. Cached
+ * role snapshots never authorize data access. Legacy sessions still honor
+ * APP_WORKSPACE_ID.
+ * An install that omits the Accounts wiring
  * fails loudly with 503 (see appAuthMisconfigured) instead of serving the
  * drive anonymously; a deliberately public drive takes the explicit
  * ALLOW_UNAUTHENTICATED_DRIVE opt-in.
@@ -20,13 +24,20 @@ const SESSION_COOKIE = "takos_app_session";
 const STATE_COOKIE = "takos_app_oauth_state";
 const SESSION_MAX_AGE_SECONDS = 12 * 60 * 60;
 const STATE_MAX_AGE_SECONDS = 10 * 60;
+const MAX_SESSION_COOKIE_VALUE_BYTES = 3_800;
+
+export type AppRole = "owner" | "member";
 
 export interface AppSession {
   sub: string;
   name?: string;
   workspaceIds: string[];
+  capsuleId?: string;
+  appRole?: AppRole;
   exp: number;
 }
+
+type StoredAppSession = AppSession & { accessToken?: string };
 
 type OAuthState = {
   state: string;
@@ -59,6 +70,7 @@ function authConfig(env: Env) {
     clientSecret: envValue(env, "OIDC_CLIENT_SECRET"),
     sessionSecret: envValue(env, "APP_SESSION_SECRET"),
     workspaceId: envValue(env, "APP_WORKSPACE_ID"),
+    capsuleId: envValue(env, "APP_CAPSULE_ID"),
   };
 }
 
@@ -224,6 +236,70 @@ export async function unseal<T>(
   return parseBase64UrlJson<T>(payload);
 }
 
+// Modern app sessions retain the token only inside authenticated encryption.
+// Legacy purpose-bound HMAC cookies remain readable without acquiring app roles.
+function sessionContext(env: Env): ArrayBuffer {
+  const config = authConfig(env);
+  return new TextEncoder().encode(
+    JSON.stringify([
+      "takos-storage-session-v2",
+      config.issuer,
+      config.clientId,
+      config.capsuleId,
+    ]),
+  ).buffer;
+}
+
+async function sessionKey(secret: string): Promise<CryptoKey> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`takos-storage-session-v2:${secret}`),
+  );
+  return crypto.subtle.importKey("raw", digest, "AES-GCM", false, [
+    "encrypt",
+    "decrypt",
+  ]);
+}
+
+async function sealAppSession(
+  session: StoredAppSession,
+  env: Env,
+): Promise<string> {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv, additionalData: sessionContext(env) },
+    await sessionKey(authConfig(env).sessionSecret!),
+    new TextEncoder().encode(JSON.stringify(session)),
+  );
+  const bytes = new Uint8Array(iv.length + ciphertext.byteLength);
+  bytes.set(iv);
+  bytes.set(new Uint8Array(ciphertext), iv.length);
+  return `v2.${base64Url(bytes)}`;
+}
+
+async function openAppSession(
+  raw: string,
+  env: Env,
+): Promise<StoredAppSession | null> {
+  try {
+    const encoded = raw.slice(3).replaceAll("-", "+").replaceAll("_", "/");
+    const binary = atob(encoded.padEnd(Math.ceil(encoded.length / 4) * 4, "="));
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+    const plaintext = await crypto.subtle.decrypt(
+      {
+        name: "AES-GCM",
+        iv: bytes.slice(0, 12),
+        additionalData: sessionContext(env),
+      },
+      await sessionKey(authConfig(env).sessionSecret!),
+      bytes.slice(12),
+    );
+    return JSON.parse(new TextDecoder().decode(plaintext)) as StoredAppSession;
+  } catch {
+    return null;
+  }
+}
+
 function randomToken(): string {
   return base64Url(crypto.getRandomValues(new Uint8Array(32)));
 }
@@ -367,24 +443,69 @@ function normalizeWorkspaceIds(value: unknown): string[] {
   return [...seen];
 }
 
+function parseAppClaims(
+  value: unknown,
+): Pick<AppSession, "capsuleId" | "appRole"> | null {
+  if (value === undefined) return {};
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const claims = value as Record<string, unknown>;
+  if (!("capsule_id" in claims || "app_role" in claims)) return {};
+  if (
+    typeof claims.capsule_id !== "string" ||
+    claims.capsule_id.trim() === "" ||
+    (claims.app_role !== undefined &&
+      claims.app_role !== "owner" &&
+      claims.app_role !== "member")
+  ) {
+    return null;
+  }
+  return {
+    capsuleId: claims.capsule_id,
+    ...(claims.app_role !== undefined ? { appRole: claims.app_role } : {}),
+  };
+}
+
+class UserInfoError extends Error {
+  constructor(readonly status: number) {
+    super(`OAuth userinfo failed: ${status}`);
+  }
+}
+
 async function fetchUserInfo(env: Env, accessToken: string) {
   const userinfoEndpoint = issuerUrl(env, "/oauth/userinfo");
   const res = await fetch(userinfoEndpoint, {
     redirect: "manual",
+    signal: AbortSignal.timeout(10_000),
     headers: { Authorization: `Bearer ${accessToken}` },
   });
-  if (!res.ok) throw new Error(`OAuth userinfo failed: ${res.status}`);
+  if (!res.ok) throw new UserInfoError(res.status);
   const body = (await res.json()) as {
     user?: { id?: string; name?: string };
     sub?: string;
     name?: string;
     workspace_memberships?: unknown;
-    takosumi?: { workspace_id?: unknown };
+    takosumi?: {
+      workspace_id?: unknown;
+      role?: unknown;
+      capsule_id?: unknown;
+      app_role?: unknown;
+    };
   };
   const sub = body.user?.id ?? body.sub;
   if (!sub) throw new Error("OAuth userinfo response missing subject");
   const workspaceIds = normalizeWorkspaceIds(body.workspace_memberships);
   const nestedWorkspaceId = body.takosumi?.workspace_id;
+  const expectedWorkspaceId = authConfig(env).workspaceId;
+  const legacyRole = body.takosumi?.role;
+  const validLegacyRole =
+    legacyRole === undefined ||
+    (typeof legacyRole === "string" &&
+      ["owner", "admin", "member", "viewer"].includes(legacyRole));
+  const legacyMember =
+    expectedWorkspaceId !== undefined &&
+    nestedWorkspaceId === expectedWorkspaceId &&
+    validLegacyRole &&
+    (workspaceIds.includes(expectedWorkspaceId) || legacyRole !== undefined);
   if (
     typeof nestedWorkspaceId === "string" &&
     nestedWorkspaceId.trim() !== "" &&
@@ -392,24 +513,29 @@ async function fetchUserInfo(env: Env, accessToken: string) {
   ) {
     workspaceIds.push(nestedWorkspaceId);
   }
-  return { sub, name: body.user?.name ?? body.name, workspaceIds };
+  return {
+    sub,
+    name: body.user?.name ?? body.name,
+    workspaceIds,
+    legacyMember,
+    appClaims: authConfig(env).capsuleId ? parseAppClaims(body.takosumi) : {},
+  };
 }
 
 // ---- Guard + session lookup --------------------------------------------------
 
-export async function getAppSession(
+async function readAppSession(
   env: Env,
   request: Request,
-): Promise<AppSession | null> {
+): Promise<{ session: StoredAppSession; modern: boolean } | null> {
   const config = authConfig(env);
   if (!config.sessionSecret) return null;
   const raw = parseCookie(request.headers.get("Cookie"), SESSION_COOKIE);
-  if (!raw) return null;
-  const session = await unseal<AppSession>(
-    raw,
-    config.sessionSecret,
-    "session",
-  );
+  if (!raw || raw.length > MAX_SESSION_COOKIE_VALUE_BYTES) return null;
+  const modern = raw.startsWith("v2.");
+  const session = modern
+    ? await openAppSession(raw, env)
+    : await unseal<StoredAppSession>(raw, config.sessionSecret, "session");
   if (
     !session ||
     typeof session.sub !== "string" ||
@@ -419,7 +545,62 @@ export async function getAppSession(
   ) {
     return null;
   }
-  return session;
+  return { session, modern };
+}
+
+export async function getAppSession(
+  env: Env,
+  request: Request,
+): Promise<AppSession | null> {
+  const stored = await readAppSession(env, request);
+  if (!stored) return null;
+  // Access tokens are private to the data-authorization path, never callers of
+  // the public identity helper or /api/auth/me.
+  const session = stored.session;
+  return {
+    sub: session.sub,
+    name: session.name,
+    workspaceIds: session.workspaceIds,
+    capsuleId: session.capsuleId,
+    appRole: session.appRole,
+    exp: session.exp,
+  };
+}
+
+function sessionAccessDenied(env: Env, session: AppSession): Response | null {
+  const config = authConfig(env);
+  if (config.capsuleId) {
+    if (
+      session.capsuleId !== config.capsuleId ||
+      (session.appRole !== undefined &&
+        session.appRole !== "owner" &&
+        session.appRole !== "member")
+    ) {
+      return Response.json({ error: "app_access_denied" }, { status: 403 });
+    }
+    // Identity admission grants no private data access without live membership.
+    return null;
+  }
+  const memberships = Array.isArray(session.workspaceIds)
+    ? session.workspaceIds
+    : [];
+  if (config.workspaceId && !memberships.includes(config.workspaceId)) {
+    return Response.json(
+      { error: "workspace_membership_required" },
+      { status: 403 },
+    );
+  }
+  return null;
+}
+
+function staleCapsuleSession(env: Env, session: AppSession): Response | null {
+  if (authConfig(env).capsuleId && session.capsuleId === undefined) {
+    return Response.json(
+      { error: "reauthentication_required" },
+      { status: 401, headers: { "Set-Cookie": clearCookie(SESSION_COOKIE) } },
+    );
+  }
+  return null;
 }
 
 /** Null when the request may proceed; otherwise the 401/403/503 to return. */
@@ -431,21 +612,46 @@ export async function requireAppAuth(
   if (!config.required) return null;
   const misconfigured = appAuthMisconfigured(env);
   if (misconfigured) return misconfigured;
-  const session = await getAppSession(env, request);
-  if (!session)
-    return Response.json({ error: "unauthorized" }, { status: 401 });
-  if (config.workspaceId) {
-    const memberships = Array.isArray(session.workspaceIds)
-      ? session.workspaceIds
-      : [];
-    if (!memberships.includes(config.workspaceId)) {
+  const stored = await readAppSession(env, request);
+  if (!stored) return Response.json({ error: "unauthorized" }, { status: 401 });
+  const { session, modern } = stored;
+  const stale = staleCapsuleSession(env, session);
+  if (stale) return stale;
+  const denied = sessionAccessDenied(env, session);
+  if (denied) return denied;
+  // Existing installs without Capsule context retain Workspace admission.
+  if (!config.capsuleId) return null;
+  const membershipRequired = () =>
+    Response.json({ error: "app_membership_required" }, { status: 403 });
+  if (
+    !modern ||
+    typeof session.accessToken !== "string" ||
+    !session.accessToken
+  ) {
+    return membershipRequired();
+  }
+  try {
+    const user = await fetchUserInfo(env, session.accessToken);
+    if (
+      user.sub !== session.sub ||
+      !user.appClaims ||
+      user.appClaims.capsuleId !== config.capsuleId ||
+      user.appClaims.capsuleId !== session.capsuleId ||
+      (user.appClaims.appRole !== "owner" &&
+        user.appClaims.appRole !== "member" &&
+        !user.legacyMember)
+    )
+      return membershipRequired();
+    return null;
+  } catch (error) {
+    if (error instanceof UserInfoError && error.status === 401) {
       return Response.json(
-        { error: "workspace_membership_required" },
-        { status: 403 },
+        { error: "reauthentication_required" },
+        { status: 401, headers: { "Set-Cookie": clearCookie(SESSION_COOKIE) } },
       );
     }
+    return membershipRequired();
   }
-  return null;
 }
 
 // ---- Routes ------------------------------------------------------------------
@@ -465,19 +671,17 @@ export async function handleAuthRoute(
     const session = await getAppSession(env, request);
     if (!session)
       return Response.json({ error: "unauthorized" }, { status: 401 });
-    if (
-      config.workspaceId &&
-      !session.workspaceIds?.includes(config.workspaceId)
-    ) {
-      return Response.json(
-        { error: "workspace_membership_required" },
-        { status: 403 },
-      );
-    }
+    const stale = staleCapsuleSession(env, session);
+    if (stale) return stale;
+    const denied = sessionAccessDenied(env, session);
+    if (denied) return denied;
     return Response.json({
       required: true,
       sub: session.sub,
       name: session.name ?? null,
+      ...(session.capsuleId !== undefined ? { authenticated: true } : {}),
+      // Cached role claims cannot prove current membership. Storage exposes no
+      // management signal until a future management surface revalidates it.
     });
   }
 
@@ -551,16 +755,30 @@ export async function handleAuthRoute(
     }
     const accessToken = await exchangeCode(env, code, state.codeVerifier);
     const user = await fetchUserInfo(env, accessToken);
-    const session = await seal(
-      {
-        sub: user.sub,
-        name: user.name,
-        workspaceIds: user.workspaceIds,
-        exp: Math.floor(Date.now() / 1000) + SESSION_MAX_AGE_SECONDS,
-      } satisfies AppSession,
-      config.sessionSecret!,
-      "session",
-    );
+    if (user.appClaims === null) {
+      return Response.json({ error: "invalid_app_claim" }, { status: 403 });
+    }
+    const sessionData: AppSession = {
+      sub: user.sub,
+      name: user.name,
+      workspaceIds:
+        user.appClaims.capsuleId !== undefined
+          ? config.workspaceId && user.workspaceIds.includes(config.workspaceId)
+            ? [config.workspaceId]
+            : []
+          : user.workspaceIds,
+      ...user.appClaims,
+      exp: Math.floor(Date.now() / 1000) + SESSION_MAX_AGE_SECONDS,
+    };
+    const denied = sessionAccessDenied(env, sessionData);
+    if (denied) return denied;
+    const session =
+      sessionData.capsuleId !== undefined
+        ? await sealAppSession({ ...sessionData, accessToken }, env)
+        : await seal(sessionData, config.sessionSecret!, "session");
+    if (session.length > MAX_SESSION_COOKIE_VALUE_BYTES) {
+      return Response.json({ error: "session_too_large" }, { status: 502 });
+    }
     // Re-validate at emit time so a tampered/legacy state cookie can never
     // drive an external Location redirect.
     const headers = new Headers({ Location: safeReturnTo(state.returnTo) });

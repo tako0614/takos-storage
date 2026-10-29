@@ -20,6 +20,39 @@ variable "project_name" {
   }
 }
 
+# Service-owned installContextVariableMapping supplies these non-secret ids.
+# Repository metadata and incoming sign-in claims never choose the expected id.
+variable "takosumi_workspace_id" {
+  description = "Optional compatibility Workspace id from authenticated install context."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = trimspace(var.takosumi_workspace_id) == "" || can(regex("^[^[:space:]]{1,512}$", trimspace(var.takosumi_workspace_id)))
+    error_message = "takosumi_workspace_id must be empty or a bounded id without whitespace."
+  }
+}
+
+variable "takosumi_capsule_id" {
+  description = "Optional installed app id from authenticated install context; required for app-scoped browser claims."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = trimspace(var.takosumi_capsule_id) == "" || can(regex("^[^[:space:]]{1,512}$", trimspace(var.takosumi_capsule_id)))
+    error_message = "takosumi_capsule_id must be empty or a bounded id without whitespace."
+  }
+}
+
+locals {
+  workspace_id = trimspace(var.takosumi_workspace_id)
+  capsule_id   = trimspace(var.takosumi_capsule_id)
+  app_identity_vars = merge(
+    local.workspace_id != "" ? { APP_WORKSPACE_ID = local.workspace_id } : {},
+    local.capsule_id != "" ? { APP_CAPSULE_ID = local.capsule_id } : {},
+  )
+}
+
 resource "takoform_edge_object_bucket" "objects" {
   name = "${var.project_name}-objects"
 }
@@ -47,6 +80,7 @@ resource "takoform_worker_version" "worker" {
   worker         = takoform_module_worker.worker.name
   bundle         = takoform_worker_bundle.worker.name
   handlers       = ["fetch"]
+  vars_json      = jsonencode(local.app_identity_vars)
   required_sensitive_vars = [
     "APP_SESSION_SECRET",
     "OIDC_ISSUER_URL",
@@ -64,6 +98,11 @@ resource "takoform_worker_version" "worker" {
 
   lifecycle {
     create_before_destroy = true
+
+    precondition {
+      condition     = local.capsule_id != "" || local.workspace_id != ""
+      error_message = "Authenticated install context must supply takosumi_capsule_id or legacy takosumi_workspace_id."
+    }
   }
 }
 

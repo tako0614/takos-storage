@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
-import { verifyInterfaceOAuthBearer } from "./interface-oauth-auth.ts";
+import {
+  hasValidInterfaceOAuthConfiguration,
+  verifyInterfaceOAuthBearer,
+} from "./interface-oauth-auth.ts";
 
 const TOKEN = "taksrv_storage_test_token";
 const PERMISSION = "storage.object.read";
@@ -54,7 +57,7 @@ describe("Interface OAuth verifier", () => {
     expect(await verify(validClaims)).toBe(true);
   });
 
-  test("accepts complete live owner evidence without duplicating control ids in the Worker", async () => {
+  test("accepts complete live evidence with exact Capsule and no Workspace configuration", async () => {
     expect(
       await verifyInterfaceOAuthBearer(
         new Request("https://storage.example/o/documents/a.txt"),
@@ -63,6 +66,7 @@ describe("Interface OAuth verifier", () => {
         {
           issuerUrl: "https://accounts.example",
           expectedAudience: "https://storage.example/o",
+          expectedCapsuleId: "capsule_storage",
           fetchImpl: async () => Response.json(validClaims),
         },
       ),
@@ -137,4 +141,92 @@ describe("Interface OAuth verifier", () => {
     ).toBe(false);
     expect(await verify(validClaims, { status: 302 })).toBe(false);
   });
+});
+
+describe("workspace-less Interface OAuth", () => {
+  const workspaceLess = {
+    ...validClaims,
+    takosumi: { ...validClaims.takosumi, workspace_id: undefined },
+  };
+  const config = {
+    issuerUrl: "https://accounts.example",
+    expectedAudience: "https://storage.example/o",
+    expectedCapsuleId: "capsule_storage",
+  };
+  const request = new Request("https://storage.example/o/document.txt");
+
+  test("configuration accepts exact app identity or a legacy Workspace", () => {
+    expect(
+      hasValidInterfaceOAuthConfiguration({
+        issuerUrl: config.issuerUrl,
+        audience: config.expectedAudience,
+        capsuleId: config.expectedCapsuleId,
+      }),
+    ).toBe(true);
+    expect(
+      hasValidInterfaceOAuthConfiguration({
+        issuerUrl: config.issuerUrl,
+        audience: config.expectedAudience,
+        workspaceId: "workspace_a",
+      }),
+    ).toBe(true);
+  });
+
+  test("accepts absent legacy Workspace evidence only with an exact configured Capsule", async () => {
+    const verifyWith = (body: unknown, overrides = {}) =>
+      verifyInterfaceOAuthBearer(request, TOKEN, PERMISSION, {
+        ...config,
+        ...overrides,
+        fetchImpl: async () => Response.json(body),
+      });
+    expect(await verifyWith(workspaceLess)).toBe(true);
+    expect(
+      await verifyWith(workspaceLess, { expectedCapsuleId: undefined }),
+    ).toBe(false);
+    expect(
+      await verifyWith(workspaceLess, { expectedWorkspaceId: "workspace_a" }),
+    ).toBe(true);
+    expect(
+      await verifyWith(validClaims, { expectedWorkspaceId: "other-workspace" }),
+    ).toBe(false);
+    expect(
+      await verifyWith(workspaceLess, { expectedCapsuleId: "other-capsule" }),
+    ).toBe(false);
+    for (const workspaceId of ["", null, 1]) {
+      expect(
+        await verifyWith({
+          ...workspaceLess,
+          takosumi: { ...workspaceLess.takosumi, workspace_id: workspaceId },
+        }),
+      ).toBe(false);
+    }
+  });
+});
+
+test("legacy Interface configuration requires matching Workspace and complete Capsule evidence", async () => {
+  const verifyLegacy = (claims: unknown) =>
+    verifyInterfaceOAuthBearer(
+      new Request("https://storage.example/o/document.txt"),
+      TOKEN,
+      PERMISSION,
+      {
+        issuerUrl: "https://accounts.example",
+        expectedAudience: "https://storage.example/o",
+        expectedWorkspaceId: "workspace_a",
+        fetchImpl: async () => Response.json(claims),
+      },
+    );
+  expect(await verifyLegacy(validClaims)).toBe(true);
+  for (const patch of [
+    { workspace_id: "foreign" },
+    { workspace_id: undefined },
+    { capsule_id: undefined },
+  ]) {
+    expect(
+      await verifyLegacy({
+        ...validClaims,
+        takosumi: { ...validClaims.takosumi, ...patch },
+      }),
+    ).toBe(false);
+  }
 });

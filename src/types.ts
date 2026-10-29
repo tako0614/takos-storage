@@ -82,8 +82,8 @@ export interface Env {
   OIDC_CLIENT_SECRET?: string;
   /** HMAC secret sealing the session + OAuth state cookies. */
   APP_SESSION_SECRET?: string;
-  /** Owning Workspace id for user membership and Interface OAuth evidence. */
+  /** Compatibility Workspace id for legacy browser membership and Interface OAuth evidence. */
   APP_WORKSPACE_ID?: string;
-  /** Owning Capsule id required for Interface OAuth evidence. */
+  /** Installed app id for browser app claims and Interface OAuth evidence. */
   APP_CAPSULE_ID?: string;
 }

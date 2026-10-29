@@ -30,7 +30,9 @@ describe("Takos Storage Takoform Capsule", () => {
       'content_file = "${path.module}/../../dist/worker.js"',
     );
     expect(main).not.toContain("manifest_digest");
-    expect(main).not.toContain("vars_json");
+    expect(main).toContain(
+      "vars_json      = jsonencode(local.app_identity_vars)",
+    );
     for (const name of [
       "APP_SESSION_SECRET",
       "OIDC_ISSUER_URL",

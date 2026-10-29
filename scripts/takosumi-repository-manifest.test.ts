@@ -21,7 +21,7 @@ test("Takos Storage publishes a closed Repository manifest", () => {
     "install",
     "kind",
   ]);
-  expect(manifest.apiVersion).toBe("takosumi.com/v2.4");
+  expect(manifest.apiVersion).toBe("takosumi.com/v2.5");
   expect(manifest.kind).toBe("Repository");
   expect(Object.keys(manifest.install)).toEqual(["modules"]);
   expect(Object.keys(manifest.install.modules)).toEqual([
@@ -126,8 +126,6 @@ test("declared modules reference real variables and no secret or host authority"
     "published_mcp_auth_token",
     "takosumi_accounts_client_secret",
     "app_session_secret",
-    "takosumi_workspace_id",
-    "takosumi_capsule_id",
     '"env"',
     "credential",
   ]) {
@@ -176,6 +174,8 @@ interface RepositoryModule {
   inputs: Array<{
     name: string;
     source: { kind: string };
+    type?: string;
+    label: { ja: string; en: string };
     secret?: boolean;
   }>;
   installExperience?: {
@@ -223,5 +223,31 @@ test("portable browser wiring uses exact sealed bindings and builds the selected
     ],
     outputs: ["dist/worker.js"],
   });
-  expect(portable.inputs.map((entry) => entry.name)).toEqual(["project_name"]);
+  expect(portable.inputs.map((entry) => entry.name)).toEqual([
+    "project_name",
+    "takosumi_capsule_id",
+    "takosumi_workspace_id",
+  ]);
+});
+
+test("both modules declare exact non-user-editable v2.5 install context inputs", () => {
+  for (const module of Object.values(manifest.install.modules)) {
+    const contextInputs = module.inputs.filter((entry) =>
+      ["capsule_id", "workspace_id"].includes(entry.source.kind),
+    );
+    expect(contextInputs).toEqual([
+      {
+        name: "takosumi_capsule_id",
+        source: { kind: "capsule_id" },
+        type: "string",
+        label: { ja: "アプリID", en: "App ID" },
+      },
+      {
+        name: "takosumi_workspace_id",
+        source: { kind: "workspace_id" },
+        type: "string",
+        label: { ja: "互換Workspace ID", en: "Compatibility Workspace ID" },
+      },
+    ]);
+  }
 });

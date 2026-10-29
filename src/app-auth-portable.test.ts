@@ -1,6 +1,7 @@
 // takos-secret-scan: synthetic — local issuer responses and session material only.
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import worker from "./worker.ts";
+import { seal } from "./app-auth.ts";
 import type { Env, R2Bucket } from "./types.ts";
 
 const redirect = "https://installed-storage.example/api/auth/callback/takos";
@@ -48,6 +49,9 @@ function cookie(response: Response, name: string): string {
 async function loginAndCallback(
   subject = "fixture-owner",
   overrides: Partial<Env> = {},
+  claims: Record<string, unknown> = {
+    workspace_memberships: ["fixture-workspace"],
+  },
 ) {
   const config = { ...env, ...overrides };
   const login = await worker.fetch(
@@ -93,7 +97,7 @@ async function loginAndCallback(
           );
           return Response.json({
             sub: subject,
-            workspace_memberships: ["fixture-workspace"],
+            ...claims,
           });
         }
         throw new Error("unexpected network request");
@@ -296,4 +300,203 @@ describe("portable registered OIDC runtime inputs", () => {
     }
     expect(fetchMock).not.toHaveBeenCalled();
   });
+});
+
+describe("installed app sign-in claims", () => {
+  const appEnv = {
+    APP_CAPSULE_ID: "fixture-app",
+    APP_WORKSPACE_ID: "fixture-workspace",
+  };
+
+  test.each(["owner", "member", undefined])(
+    "matching app with role %s signs in but private Drive requires a live role",
+    async (appRole) => {
+      const { config, response } = await loginAndCallback(
+        "ordinary-signed-in-user",
+        appEnv,
+        { takosumi: { capsule_id: "fixture-app", app_role: appRole } },
+      );
+      expect(response.status).toBe(302);
+      const session = cookie(response, "takos_app_session");
+      const me = await worker.fetch(req("/api/auth/me", session), config);
+      expect(me.status).toBe(200);
+      // A previously issued owner/member claim may have been revoked. /me
+      // must never publish that cached snapshot as current management authority.
+      expect(await me.json()).toEqual({
+        required: true,
+        sub: "ordinary-signed-in-user",
+        name: null,
+        authenticated: true,
+      });
+      expect(
+        (await worker.fetch(req("/api/drive/list", session), config)).status,
+      ).toBe(appRole ? 200 : 403);
+      // Existing sessions cannot carry app management or Drive access into
+      // another installation, even if the compatibility Workspace is the same.
+      for (const path of ["/api/auth/me", "/api/drive/list"]) {
+        const changed = await worker.fetch(req(path, session), {
+          ...config,
+          APP_CAPSULE_ID: "another-app",
+        });
+        expect(changed.status).toBe(401);
+        expect(await changed.json()).toEqual({ error: "unauthorized" });
+      }
+    },
+  );
+
+  test.each(["administrator", "OWNER", "", null, 1])(
+    "invalid app role %s never becomes ordinary or management access",
+    async (appRole) => {
+      const { response } = await loginAndCallback("fixture-user", appEnv, {
+        workspace_memberships: ["fixture-workspace"],
+        takosumi: { capsule_id: "fixture-app", app_role: appRole },
+      });
+      expect(response.status).toBe(403);
+      expect(await response.json()).toEqual({ error: "invalid_app_claim" });
+      expect(response.headers.get("set-cookie")).toBeNull();
+    },
+  );
+
+  test.each([
+    { capsule_id: "another-app", app_role: "owner" },
+    { capsule_id: "another-app" },
+    { app_role: "owner" },
+    { capsule_id: "", app_role: "member" },
+    { capsule_id: null },
+  ])(
+    "app claim %j cannot fall back to Workspace membership",
+    async (claims) => {
+      const { response } = await loginAndCallback("fixture-user", appEnv, {
+        workspace_memberships: ["fixture-workspace"],
+        takosumi: claims,
+      });
+      expect(response.status).toBe(403);
+      expect(response.headers.get("set-cookie")).toBeNull();
+    },
+  );
+
+  test.each([null, false, "malformed", []].map((takosumi) => ({ takosumi })))(
+    "malformed app claim envelope %j fails closed",
+    async ({ takosumi }) => {
+      const { response } = await loginAndCallback("fixture-user", appEnv, {
+        workspace_memberships: ["fixture-workspace"],
+        takosumi,
+      });
+      expect(response.status).toBe(403);
+      expect(await response.json()).toEqual({ error: "invalid_app_claim" });
+      expect(response.headers.get("set-cookie")).toBeNull();
+    },
+  );
+
+  test("app browser sessions need no compatibility Workspace configuration", async () => {
+    const { config, response } = await loginAndCallback(
+      "ordinary-user",
+      { APP_CAPSULE_ID: "fixture-app" },
+      { takosumi: { capsule_id: "fixture-app" } },
+    );
+    expect(response.status).toBe(302);
+    const session = cookie(response, "takos_app_session");
+    expect(
+      (await worker.fetch(req("/api/auth/me", session), config)).status,
+    ).toBe(200);
+    expect(
+      (await worker.fetch(req("/api/drive/list", session), config)).status,
+    ).toBe(403);
+  });
+
+  test("an unconfigured expected app ignores claimed app authority", async () => {
+    const { response } = await loginAndCallback(
+      "fixture-user",
+      {},
+      {
+        takosumi: { capsule_id: "fixture-app", app_role: "owner" },
+      },
+    );
+    expect(response.status).toBe(302);
+  });
+
+  test("legacy Workspace claim forms keep access without granting an app role", async () => {
+    for (const claims of [
+      { workspace_memberships: ["fixture-workspace"] },
+      { workspace_memberships: [{ workspace_id: "fixture-workspace" }] },
+      { takosumi: { workspace_id: "fixture-workspace", role: "owner" } },
+    ]) {
+      const { config, response } = await loginAndCallback(
+        "fixture-user",
+        { APP_WORKSPACE_ID: "fixture-workspace" },
+        claims,
+      );
+      expect(response.status).toBe(302);
+      const session = cookie(response, "takos_app_session");
+      const me = await worker.fetch(req("/api/auth/me", session), config);
+      expect(me.status).toBe(200);
+      expect(
+        ((await me.json()) as { appRole: unknown }).appRole,
+      ).toBeUndefined();
+      expect(
+        (await worker.fetch(req("/api/drive/list", session), config)).status,
+      ).toBe(200);
+    }
+  });
+
+  test("sealed invalid roles cannot bypass the shared session and Drive guard", async () => {
+    const session = `takos_app_session=${await seal(
+      {
+        sub: "fixture-user",
+        capsuleId: "fixture-app",
+        appRole: "administrator",
+        workspaceIds: ["fixture-workspace"],
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      },
+      env.APP_SESSION_SECRET!,
+      "session",
+    )}`;
+    for (const path of ["/api/auth/me", "/api/drive/list"]) {
+      expect(
+        (await worker.fetch(req(path, session), { ...env, ...appEnv })).status,
+      ).toBe(403);
+    }
+  });
+});
+
+describe("legacy install context compatibility", () => {
+  test("capsule-bound current Accounts claims work without APP_CAPSULE_ID", async () => {
+    const { config, response } = await loginAndCallback(
+      "fixture-user",
+      {
+        APP_WORKSPACE_ID: "fixture-workspace",
+      },
+      {
+        workspace_memberships: ["fixture-workspace"],
+        takosumi: {
+          capsule_id: "fixture-app",
+          workspace_id: "fixture-workspace",
+          role: "member",
+        },
+      },
+    );
+    expect(response.status).toBe(302);
+    const session = cookie(response, "takos_app_session");
+    expect(
+      (await worker.fetch(req("/api/drive/list", session), config)).status,
+    ).toBe(200);
+  });
+
+  test.each([
+    {},
+    { takosumi: { workspace_id: "fixture-workspace", role: "owner" } },
+  ])(
+    "configured Capsule refuses UserInfo without app claims: %j",
+    async (claims) => {
+      const { response } = await loginAndCallback(
+        "fixture-user",
+        {
+          APP_CAPSULE_ID: "fixture-app",
+        },
+        claims,
+      );
+      expect(response.status).toBe(403);
+      expect(response.headers.get("set-cookie")).toBeNull();
+    },
+  );
 });
