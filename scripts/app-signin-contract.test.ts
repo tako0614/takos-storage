@@ -51,3 +51,15 @@ test("portable install context explicitly binds app identity without copying OID
   expect(direct).toContain('local.workspace_id != "" ? [');
   expect(direct).not.toContain("must be set together");
 });
+
+test("portable install validates supplied identities and accepts a legacy Workspace context", () => {
+  expect(portable).toContain(
+    'condition     = local.capsule_id != "" || local.workspace_id != ""',
+  );
+  expect(portable).toContain(
+    "takosumi_workspace_id must be empty or a bounded id without whitespace.",
+  );
+  expect(portable).toContain(
+    "takosumi_capsule_id must be empty or a bounded id without whitespace.",
+  );
+});

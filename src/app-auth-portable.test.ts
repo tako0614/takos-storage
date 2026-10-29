@@ -404,7 +404,7 @@ describe("installed app sign-in claims", () => {
     ).toBe(403);
   });
 
-  test("an unconfigured expected app cannot trust the claimed app id", async () => {
+  test("an unconfigured expected app ignores claimed app authority", async () => {
     const { response } = await loginAndCallback(
       "fixture-user",
       {},
@@ -412,9 +412,7 @@ describe("installed app sign-in claims", () => {
         takosumi: { capsule_id: "fixture-app", app_role: "owner" },
       },
     );
-    expect(response.status).toBe(403);
-    expect(await response.json()).toEqual({ error: "app_access_denied" });
-    expect(response.headers.get("set-cookie")).toBeNull();
+    expect(response.status).toBe(302);
   });
 
   test("legacy Workspace claim forms keep access without granting an app role", async () => {
@@ -425,7 +423,7 @@ describe("installed app sign-in claims", () => {
     ]) {
       const { config, response } = await loginAndCallback(
         "fixture-user",
-        appEnv,
+        { APP_WORKSPACE_ID: "fixture-workspace" },
         claims,
       );
       expect(response.status).toBe(302);
@@ -459,4 +457,46 @@ describe("installed app sign-in claims", () => {
       ).toBe(403);
     }
   });
+});
+
+describe("legacy install context compatibility", () => {
+  test("capsule-bound current Accounts claims work without APP_CAPSULE_ID", async () => {
+    const { config, response } = await loginAndCallback(
+      "fixture-user",
+      {
+        APP_WORKSPACE_ID: "fixture-workspace",
+      },
+      {
+        workspace_memberships: ["fixture-workspace"],
+        takosumi: {
+          capsule_id: "fixture-app",
+          workspace_id: "fixture-workspace",
+          role: "member",
+        },
+      },
+    );
+    expect(response.status).toBe(302);
+    const session = cookie(response, "takos_app_session");
+    expect(
+      (await worker.fetch(req("/api/drive/list", session), config)).status,
+    ).toBe(200);
+  });
+
+  test.each([
+    {},
+    { takosumi: { workspace_id: "fixture-workspace", role: "owner" } },
+  ])(
+    "configured Capsule refuses UserInfo without app claims: %j",
+    async (claims) => {
+      const { response } = await loginAndCallback(
+        "fixture-user",
+        {
+          APP_CAPSULE_ID: "fixture-app",
+        },
+        claims,
+      );
+      expect(response.status).toBe(403);
+      expect(response.headers.get("set-cookie")).toBeNull();
+    },
+  );
 });

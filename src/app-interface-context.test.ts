@@ -76,3 +76,52 @@ for (const [path, permission] of [
     ).toBe(503);
   });
 }
+
+for (const [path, permission] of [
+  ["/o", "storage.object.list"],
+  ["/mcp", "mcp.invoke"],
+]) {
+  test(`${path} supports a legacy Workspace-only install context`, async () => {
+    let workspaceId = "legacy-workspace";
+    const worker = createStorageWorker(async () =>
+      Response.json({
+        token_use: "interface_oauth",
+        sub: "principal_storage",
+        aud: `https://storage.example${path}`,
+        scope: permission,
+        takosumi: {
+          workspace_id: workspaceId,
+          capsule_id: "capsule_storage",
+          interface_id: "interface_storage",
+          interface_binding_id: "binding_storage",
+          interface_resolved_revision: 1,
+        },
+      }),
+    );
+    const config = {
+      ...env,
+      APP_CAPSULE_ID: undefined,
+      APP_WORKSPACE_ID: "legacy-workspace",
+    };
+    const request = () =>
+      new Request(`https://storage.example${path}`, {
+        method: path === "/mcp" ? "POST" : "GET",
+        headers: {
+          authorization: "Bearer taksrv_synthetic_interface_token",
+          "content-type": "application/json",
+        },
+        ...(path === "/mcp"
+          ? {
+              body: JSON.stringify({
+                jsonrpc: "2.0",
+                id: 1,
+                method: "tools/list",
+              }),
+            }
+          : {}),
+      });
+    expect((await worker.fetch(request(), config)).status).toBe(200);
+    workspaceId = "foreign-workspace";
+    expect((await worker.fetch(request(), config)).status).toBe(401);
+  });
+}

@@ -26,15 +26,24 @@ Workspace id. Browser app claims must match an explicitly configured
 APP_CAPSULE_ID. Any matching-app account may sign in and /api/auth/me confirms
 that identity. The shared Drive is private: each data request revalidates the
 same subject, exact Capsule and current owner/member role through UserInfo.
+Current Accounts also emits capsule_id with workspace_id, role and top-level
+workspace_memberships before app_role is available. If app_role is absent, a
+matching APP_WORKSPACE_ID plus legacy role/membership retains private Drive
+access. A foreign Capsule or an invalid app_role never uses that fallback.
 An ordinary signed-in account has no Drive sharing grant and receives 403 for
 reads and mutations. Modern cookies encrypt the retained OAuth token with
 AES-GCM bound to issuer/client/Capsule context; HMAC legacy cookies never carry
 new app authority. Storage has no separate management surface, and /api/auth/me
 does not expose cached roles as current authority. Expired/revoked tokens or
 unavailable UserInfo deny private data access; the request has a ten-second
-UserInfo deadline. Users must sign in again after token expiry; this consumer
-does not refresh tokens.
-Legacy Workspace-only claims keep the APP_WORKSPACE_ID membership restriction.
+UserInfo deadline. UserInfo 401 (including the current 300-second access-token
+expiry) returns 401 reauthentication_required and clears the session cookie,
+so the existing console login redirect runs. This consumer does not refresh
+tokens. Other authorization failures remain 403.
+When APP_CAPSULE_ID is unset, capsule claims are ignored and the existing
+APP_WORKSPACE_ID membership restriction remains in effect. When APP_CAPSULE_ID
+is set, UserInfo must include the exact Capsule; a Workspace-only response
+cannot bypass that requirement.
 Object and MCP Interface authorization remain separate; this declaration does
 not qualify their selected-host authority.
 
@@ -48,8 +57,11 @@ validates and compiles those proposals into its service-owned InstallConfig
 context mapping, which supplies authenticated ledger identities at Run
 preparation. They are not user-entered identity fields. The existing OIDC
 runtime recipe continues to deliver only its sensitive bindings.
-Without the expected app id, new app claims fail closed; an incoming claim is
-never used to infer that id. The direct adapter retains its operator-provided
+The portable plan requires at least a Capsule id or legacy Workspace id and
+validates supplied ids. Existing Workspace-only installs remain usable until
+the v2.5 mapping is adopted. Their Object/MCP Interface grants still require a
+matching Workspace, Capsule evidence, audience, permission, binding and revision.
+An incoming claim never supplies the expected deployment identity. The direct adapter retains its operator-provided
 APP_URL/session-secret and validates any registered callback against that origin.
 
 The selected Host must actually support Provider4 runtime inputs, its origin

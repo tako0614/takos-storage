@@ -465,6 +465,12 @@ function parseAppClaims(
   };
 }
 
+class UserInfoError extends Error {
+  constructor(readonly status: number) {
+    super(`OAuth userinfo failed: ${status}`);
+  }
+}
+
 async function fetchUserInfo(env: Env, accessToken: string) {
   const userinfoEndpoint = issuerUrl(env, "/oauth/userinfo");
   const res = await fetch(userinfoEndpoint, {
@@ -472,7 +478,7 @@ async function fetchUserInfo(env: Env, accessToken: string) {
     signal: AbortSignal.timeout(10_000),
     headers: { Authorization: `Bearer ${accessToken}` },
   });
-  if (!res.ok) throw new Error(`OAuth userinfo failed: ${res.status}`);
+  if (!res.ok) throw new UserInfoError(res.status);
   const body = (await res.json()) as {
     user?: { id?: string; name?: string };
     sub?: string;
@@ -480,6 +486,7 @@ async function fetchUserInfo(env: Env, accessToken: string) {
     workspace_memberships?: unknown;
     takosumi?: {
       workspace_id?: unknown;
+      role?: unknown;
       capsule_id?: unknown;
       app_role?: unknown;
     };
@@ -488,6 +495,14 @@ async function fetchUserInfo(env: Env, accessToken: string) {
   if (!sub) throw new Error("OAuth userinfo response missing subject");
   const workspaceIds = normalizeWorkspaceIds(body.workspace_memberships);
   const nestedWorkspaceId = body.takosumi?.workspace_id;
+  const expectedWorkspaceId = authConfig(env).workspaceId;
+  const legacyMember =
+    expectedWorkspaceId !== undefined &&
+    nestedWorkspaceId === expectedWorkspaceId &&
+    (workspaceIds.includes(expectedWorkspaceId) ||
+      ["owner", "admin", "member", "viewer"].includes(
+        String(body.takosumi?.role),
+      ));
   if (
     typeof nestedWorkspaceId === "string" &&
     nestedWorkspaceId.trim() !== "" &&
@@ -499,7 +514,8 @@ async function fetchUserInfo(env: Env, accessToken: string) {
     sub,
     name: body.user?.name ?? body.name,
     workspaceIds,
-    appClaims: parseAppClaims(body.takosumi),
+    legacyMember,
+    appClaims: authConfig(env).capsuleId ? parseAppClaims(body.takosumi) : {},
   };
 }
 
@@ -550,9 +566,8 @@ export async function getAppSession(
 
 function sessionAccessDenied(env: Env, session: AppSession): Response | null {
   const config = authConfig(env);
-  if (session.capsuleId !== undefined || session.appRole !== undefined) {
+  if (config.capsuleId) {
     if (
-      !config.capsuleId ||
       session.capsuleId !== config.capsuleId ||
       (session.appRole !== undefined &&
         session.appRole !== "owner" &&
@@ -560,8 +575,7 @@ function sessionAccessDenied(env: Env, session: AppSession): Response | null {
     ) {
       return Response.json({ error: "app_access_denied" }, { status: 403 });
     }
-    // This is identity admission only. Private shared Drive access separately
-    // requires a live owner/member check; ordinary sign-in grants no data ACL.
+    // Identity admission grants no private data access without live membership.
     return null;
   }
   const memberships = Array.isArray(session.workspaceIds)
@@ -590,9 +604,8 @@ export async function requireAppAuth(
   const { session, modern } = stored;
   const denied = sessionAccessDenied(env, session);
   if (denied) return denied;
-  // Only legacy Workspace-only cookies retain their former data admission.
-  if (session.capsuleId === undefined && session.appRole === undefined)
-    return null;
+  // Existing installs without Capsule context retain Workspace admission.
+  if (!config.capsuleId) return null;
   const membershipRequired = () =>
     Response.json({ error: "app_membership_required" }, { status: 403 });
   if (
@@ -610,11 +623,18 @@ export async function requireAppAuth(
       user.appClaims.capsuleId !== config.capsuleId ||
       user.appClaims.capsuleId !== session.capsuleId ||
       (user.appClaims.appRole !== "owner" &&
-        user.appClaims.appRole !== "member")
+        user.appClaims.appRole !== "member" &&
+        !user.legacyMember)
     )
       return membershipRequired();
     return null;
-  } catch {
+  } catch (error) {
+    if (error instanceof UserInfoError && error.status === 401) {
+      return Response.json(
+        { error: "reauthentication_required" },
+        { status: 401, headers: { "Set-Cookie": clearCookie(SESSION_COOKIE) } },
+      );
+    }
     return membershipRequired();
   }
 }

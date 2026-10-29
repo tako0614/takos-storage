@@ -109,7 +109,9 @@ export function hasValidInterfaceOAuthConfiguration(input: {
     userInfoEndpoint(input.issuerUrl) !== null &&
     canonicalResourceUri(input.audience ?? "") !== null &&
     (input.workspaceId === undefined || boundedId(input.workspaceId)) &&
-    boundedId(input.capsuleId)
+    (input.capsuleId === undefined
+      ? boundedId(input.workspaceId)
+      : boundedId(input.capsuleId))
   );
 }
 
@@ -161,7 +163,9 @@ export async function authorizeInterfaceOAuthBearer(
     !expectedAudience ||
     (options.expectedWorkspaceId !== undefined &&
       !boundedId(expectedWorkspaceId)) ||
-    !boundedId(expectedCapsuleId) ||
+    (options.expectedCapsuleId === undefined
+      ? !boundedId(expectedWorkspaceId)
+      : !boundedId(expectedCapsuleId)) ||
     !validPermission(expectedPermission) ||
     !requestTargetsResource(request, expectedAudience) ||
     !token.startsWith(INTERFACE_TOKEN_PREFIX) ||
@@ -198,7 +202,9 @@ export async function authorizeInterfaceOAuthBearer(
       (expectedWorkspaceId !== undefined &&
         evidence.workspace_id !== undefined &&
         evidence.workspace_id !== expectedWorkspaceId) ||
-      evidence.capsule_id !== expectedCapsuleId ||
+      (expectedCapsuleId !== undefined
+        ? evidence.capsule_id !== expectedCapsuleId
+        : evidence.workspace_id !== expectedWorkspaceId) ||
       !boundedId(evidence.interface_id) ||
       !boundedId(evidence.interface_binding_id) ||
       !Number.isSafeInteger(evidence.interface_resolved_revision) ||

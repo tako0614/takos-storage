@@ -155,7 +155,7 @@ describe("workspace-less Interface OAuth", () => {
   };
   const request = new Request("https://storage.example/o/document.txt");
 
-  test("configuration needs exact app identity and accepts no Workspace", () => {
+  test("configuration accepts exact app identity or a legacy Workspace", () => {
     expect(
       hasValidInterfaceOAuthConfiguration({
         issuerUrl: config.issuerUrl,
@@ -169,7 +169,7 @@ describe("workspace-less Interface OAuth", () => {
         audience: config.expectedAudience,
         workspaceId: "workspace_a",
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   test("accepts absent legacy Workspace evidence only with an exact configured Capsule", async () => {
@@ -201,4 +201,32 @@ describe("workspace-less Interface OAuth", () => {
       ).toBe(false);
     }
   });
+});
+
+test("legacy Interface configuration requires matching Workspace and complete Capsule evidence", async () => {
+  const verifyLegacy = (claims: unknown) =>
+    verifyInterfaceOAuthBearer(
+      new Request("https://storage.example/o/document.txt"),
+      TOKEN,
+      PERMISSION,
+      {
+        issuerUrl: "https://accounts.example",
+        expectedAudience: "https://storage.example/o",
+        expectedWorkspaceId: "workspace_a",
+        fetchImpl: async () => Response.json(claims),
+      },
+    );
+  expect(await verifyLegacy(validClaims)).toBe(true);
+  for (const patch of [
+    { workspace_id: "foreign" },
+    { workspace_id: undefined },
+    { capsule_id: undefined },
+  ]) {
+    expect(
+      await verifyLegacy({
+        ...validClaims,
+        takosumi: { ...validClaims.takosumi, ...patch },
+      }),
+    ).toBe(false);
+  }
 });

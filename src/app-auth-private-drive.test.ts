@@ -21,7 +21,10 @@ function cookie(response: Response, name: string): string {
   return value!.split(";", 1)[0]!;
 }
 
-async function fixture(role: "owner" | "member" | undefined) {
+async function fixture(
+  role: "owner" | "member" | undefined,
+  claims?: Record<string, unknown>,
+) {
   const effects: string[] = [];
   const env: Env = {
     APP_URL: origin,
@@ -61,7 +64,7 @@ async function fixture(role: "owner" | "member" | undefined) {
       },
     },
   };
-  let current: Record<string, unknown> = {
+  let current: Record<string, unknown> = claims ?? {
     sub: "same-user",
     workspace_memberships: ["legacy-workspace"],
     takosumi: { capsule_id: "app-storage", app_role: role },
@@ -176,13 +179,59 @@ describe("private shared Drive admission", () => {
     },
   );
 
+  test.each(["owner", "admin", "member", "viewer"])(
+    "current Accounts %s claims without app_role retain private Drive access",
+    async (role) => {
+      const f = await fixture(undefined, {
+        sub: "same-user",
+        workspace_memberships: ["legacy-workspace"],
+        takosumi: {
+          capsule_id: "app-storage",
+          workspace_id: "legacy-workspace",
+          role,
+        },
+      });
+      expect((await f.request("/api/drive/list")).status).toBe(200);
+      expect((await f.request("/api/drive/file/new.txt", "PUT")).status).toBe(
+        201,
+      );
+      f.evidence({
+        sub: "same-user",
+        workspace_memberships: ["legacy-workspace"],
+        takosumi: {
+          capsule_id: "app-storage",
+          workspace_id: "foreign-workspace",
+          role,
+        },
+      });
+      expect((await f.request("/api/drive/list")).status).toBe(403);
+      f.evidence({ sub: "same-user", takosumi: { capsule_id: "app-storage" } });
+      expect((await f.request("/api/drive/list")).status).toBe(403);
+    },
+  );
+
+  test("a current legacy member stays admitted while app_role is absent", async () => {
+    const f = await fixture("owner");
+    f.evidence({
+      sub: "same-user",
+      workspace_memberships: ["legacy-workspace"],
+      takosumi: {
+        capsule_id: "app-storage",
+        workspace_id: "legacy-workspace",
+        role: "owner",
+      },
+    });
+    expect((await f.request("/api/drive/list")).status).toBe(200);
+    f.status(503);
+    expect((await f.request("/api/drive/list")).status).toBe(403);
+  });
+
   test("removing current membership denies the same previously admitted cookie", async () => {
     const f = await fixture("owner");
     expect((await f.request("/api/drive/list")).status).toBe(200);
     f.effects.length = 0;
     f.evidence({
       sub: "same-user",
-      workspace_memberships: ["legacy-workspace"],
       takosumi: { capsule_id: "app-storage" },
     });
     expect((await f.request("/api/auth/me")).status).toBe(200);
@@ -216,8 +265,31 @@ describe("private shared Drive admission", () => {
         expect((await f.request(path, method)).status).toBe(403);
     }
     f.status(401);
-    expect((await f.request("/api/drive/list")).status).toBe(403);
+    const expired = await f.request("/api/drive/list");
+    expect(expired.status).toBe(401);
+    expect(await expired.json()).toEqual({
+      error: "reauthentication_required",
+    });
+    expect(expired.headers.get("set-cookie")).toContain("Max-Age=0");
     expect(f.effects).toEqual([]);
+  });
+
+  test("expired 300-second access token requests reauthentication while the session is still valid", async () => {
+    const f = await fixture("member");
+    const clock = spyOn(Date, "now").mockReturnValue(Date.now() + 301_000);
+    try {
+      f.status(401);
+      const response = await f.request("/api/drive/list");
+      expect(response.status).toBe(401);
+      expect(await response.json()).toEqual({
+        error: "reauthentication_required",
+      });
+      expect(response.headers.get("set-cookie")).toContain("Max-Age=0");
+      expect((await f.request("/api/auth/login")).status).toBe(302);
+      expect(f.effects).toEqual([]);
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   test("modern token stays encrypted, bound to its app context and absent from identity output", async () => {

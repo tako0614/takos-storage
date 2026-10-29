@@ -26,12 +26,22 @@ variable "takosumi_workspace_id" {
   description = "Optional compatibility Workspace id from authenticated install context."
   type        = string
   default     = ""
+
+  validation {
+    condition     = trimspace(var.takosumi_workspace_id) == "" || can(regex("^[^[:space:]]{1,512}$", trimspace(var.takosumi_workspace_id)))
+    error_message = "takosumi_workspace_id must be empty or a bounded id without whitespace."
+  }
 }
 
 variable "takosumi_capsule_id" {
   description = "Optional installed app id from authenticated install context; required for app-scoped browser claims."
   type        = string
   default     = ""
+
+  validation {
+    condition     = trimspace(var.takosumi_capsule_id) == "" || can(regex("^[^[:space:]]{1,512}$", trimspace(var.takosumi_capsule_id)))
+    error_message = "takosumi_capsule_id must be empty or a bounded id without whitespace."
+  }
 }
 
 locals {
@@ -88,6 +98,11 @@ resource "takoform_worker_version" "worker" {
 
   lifecycle {
     create_before_destroy = true
+
+    precondition {
+      condition     = local.capsule_id != "" || local.workspace_id != ""
+      error_message = "Authenticated install context must supply takosumi_capsule_id or legacy takosumi_workspace_id."
+    }
   }
 }
 
