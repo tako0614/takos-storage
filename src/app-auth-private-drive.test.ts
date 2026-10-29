@@ -146,6 +146,37 @@ const privateOperations = [
 ] as const;
 
 describe("private shared Drive admission", () => {
+  test("capsule-less pre-deploy sessions are cleared and asked to sign in again", async () => {
+    const f = await fixture(undefined);
+    const staleCookie = `takos_app_session=${await seal(
+      {
+        sub: "same-user",
+        workspaceIds: ["legacy-workspace"],
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      },
+      f.env.APP_SESSION_SECRET!,
+      "session",
+    )}`;
+    const requestWithStaleCookie = (path: string, method = "GET") =>
+      worker.fetch(
+        new Request(`${origin}${path}`, {
+          method,
+          headers: { cookie: staleCookie },
+        }),
+        f.env,
+      );
+
+    for (const path of ["/api/auth/me", "/api/drive/list"]) {
+      const response = await requestWithStaleCookie(path);
+      expect(response.status).toBe(401);
+      expect(await response.json()).toEqual({
+        error: "reauthentication_required",
+      });
+      expect(response.headers.get("set-cookie")).toContain("Max-Age=0");
+    }
+    expect(f.effects).toEqual([]);
+  });
+
   test("ordinary matching-app sign-in authenticates without read or mutation access", async () => {
     const f = await fixture(undefined);
     const me = await f.request("/api/auth/me");

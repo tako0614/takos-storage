@@ -593,6 +593,16 @@ function sessionAccessDenied(env: Env, session: AppSession): Response | null {
   return null;
 }
 
+function staleCapsuleSession(env: Env, session: AppSession): Response | null {
+  if (authConfig(env).capsuleId && session.capsuleId === undefined) {
+    return Response.json(
+      { error: "reauthentication_required" },
+      { status: 401, headers: { "Set-Cookie": clearCookie(SESSION_COOKIE) } },
+    );
+  }
+  return null;
+}
+
 /** Null when the request may proceed; otherwise the 401/403/503 to return. */
 export async function requireAppAuth(
   env: Env,
@@ -605,6 +615,8 @@ export async function requireAppAuth(
   const stored = await readAppSession(env, request);
   if (!stored) return Response.json({ error: "unauthorized" }, { status: 401 });
   const { session, modern } = stored;
+  const stale = staleCapsuleSession(env, session);
+  if (stale) return stale;
   const denied = sessionAccessDenied(env, session);
   if (denied) return denied;
   // Existing installs without Capsule context retain Workspace admission.
@@ -659,6 +671,8 @@ export async function handleAuthRoute(
     const session = await getAppSession(env, request);
     if (!session)
       return Response.json({ error: "unauthorized" }, { status: 401 });
+    const stale = staleCapsuleSession(env, session);
+    if (stale) return stale;
     const denied = sessionAccessDenied(env, session);
     if (denied) return denied;
     return Response.json({

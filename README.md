@@ -18,7 +18,9 @@ managed runtime の `/o` と `/mcp` は Takosumi Accounts が発行する invoca
 - configured Capsule と non-empty Principal subject（Workspace は設定した場合だけ互換照合）
 - well-formed な Interface id / InterfaceBinding id / positive resolved revision evidence
 
-ブラウザーの shared Drive は private です。アプリにサインインできることと、Drive のデータを使えることは別で、app-scoped session の read/write は同じ subject・期待 Capsule・現在の owner/member、または app_role 未発行時の同一 Workspace 会員を UserInfo で毎 request 確認します。一般利用者はサインイン後の `/api/auth/me` を利用できますが、共有 grant がないため Drive は 403 です。明示的な `ALLOW_UNAUTHENTICATED_DRIVE` の公開設定と旧 workspace-only cookie の互換規則は維持します。新 session 内の OAuth token は issuer/client/Capsule に結び付けた AES-GCM で暗号化します。UserInfo が token 期限切れなどで 401 を返すと session を削除し、既存 UI の再ログインへ進みます。
+ブラウザーの shared Drive は private です。アプリにサインインできることと、Drive のデータを使えることは別で、app-scoped session の read/write は同じ subject・期待 Capsule・現在の owner/member、または app_role 未発行時の同一 Workspace 会員を UserInfo で毎 request 確認します。一般利用者はサインイン後の `/api/auth/me` を利用できますが、共有 grant がないため Drive は 403 です。設定済み Capsule claim のない旧 session cookie は `/api/auth/me` と `/api/drive` で削除して再サインインを求めます。現在の Capsule に一致する signed-in user でも membership がなければデータアクセスは 403 のままです。`APP_CAPSULE_ID` が未設定の未更新 self-host install は、旧 workspace-only cookie と `APP_WORKSPACE_ID` membership の互換規則を維持します。明示的な `ALLOW_UNAUTHENTICATED_DRIVE` の公開設定も維持します。新 session 内の OAuth token は issuer/client/Capsule に結び付けた AES-GCM で暗号化します。UserInfo が token 期限切れなどで 401 を返すと session を削除し、既存 UI の再ログインへ進みます。
+
+App sign-in を更新するときは、consumer apps を先に deploy し、Takosumi Accounts の open sign-in writer B (#657) を最後に deploy します。Accounts の共通 `AppRole` は `owner` / `member` で、現在の owner/member role と完全一致する Capsule claim が private Drive access を許可します。`app_role` 発行前の互換期間は同じ Capsule に結び付く旧 Workspace membership を使います。未更新の self-host Storage install は引き続き Workspace membership を必要とするため、Capsule 設定へ移行するまでは `APP_WORKSPACE_ID` と Workspace membership を維持してください。
 
 `/o` の object は `interface-bindings/<binding-id>/` 以下に保存されるため、別の InterfaceBinding から同じ相対 key は見えません。旧 `tksvc_` HMAC、共有 signing key、standing admin token はありません。
 
