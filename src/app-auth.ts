@@ -496,13 +496,16 @@ async function fetchUserInfo(env: Env, accessToken: string) {
   const workspaceIds = normalizeWorkspaceIds(body.workspace_memberships);
   const nestedWorkspaceId = body.takosumi?.workspace_id;
   const expectedWorkspaceId = authConfig(env).workspaceId;
+  const legacyRole = body.takosumi?.role;
+  const validLegacyRole =
+    legacyRole === undefined ||
+    (typeof legacyRole === "string" &&
+      ["owner", "admin", "member", "viewer"].includes(legacyRole));
   const legacyMember =
     expectedWorkspaceId !== undefined &&
     nestedWorkspaceId === expectedWorkspaceId &&
-    (workspaceIds.includes(expectedWorkspaceId) ||
-      ["owner", "admin", "member", "viewer"].includes(
-        String(body.takosumi?.role),
-      ));
+    validLegacyRole &&
+    (workspaceIds.includes(expectedWorkspaceId) || legacyRole !== undefined);
   if (
     typeof nestedWorkspaceId === "string" &&
     nestedWorkspaceId.trim() !== "" &&

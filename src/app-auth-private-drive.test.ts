@@ -210,6 +210,33 @@ describe("private shared Drive admission", () => {
     },
   );
 
+  test("malformed legacy roles never grant compatibility access, even with flat membership", async () => {
+    const f = await fixture("member");
+    for (const role of [
+      ["owner"],
+      ["member"],
+      null,
+      42,
+      {},
+      "OWNER",
+      "manager",
+    ]) {
+      for (const memberships of [[], ["legacy-workspace"]]) {
+        f.evidence({
+          sub: "same-user",
+          workspace_memberships: memberships,
+          takosumi: {
+            capsule_id: "app-storage",
+            workspace_id: "legacy-workspace",
+            role,
+          },
+        });
+        expect((await f.request("/api/drive/list")).status).toBe(403);
+      }
+    }
+    expect(f.effects).toEqual([]);
+  });
+
   test("a current legacy member stays admitted while app_role is absent", async () => {
     const f = await fixture("owner");
     f.evidence({
