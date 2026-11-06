@@ -113,6 +113,7 @@ async function fixture(
         method,
         headers: {
           cookie: session,
+          origin,
           "if-none-match": "*",
           "content-type": "text/plain",
         },

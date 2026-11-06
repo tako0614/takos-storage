@@ -603,6 +603,31 @@ function staleCapsuleSession(env: Env, session: AppSession): Response | null {
   return null;
 }
 
+/** Cookie authority must not turn a same-site sibling into a mutation caller. */
+function cookieMutationDenied(env: Env, request: Request): Response | null {
+  if (["GET", "HEAD", "OPTIONS"].includes(request.method)) return null;
+  const origin = request.headers.get("origin");
+  if (origin === null) {
+    if (request.headers.get("sec-fetch-site") === "same-origin") return null;
+  } else {
+    try {
+      const candidate = new URL(origin);
+      if (
+        candidate.origin === new URL(callbackUrl(env)).origin &&
+        !candidate.username &&
+        !candidate.password &&
+        candidate.pathname === "/" &&
+        !candidate.search &&
+        !candidate.hash
+      )
+        return null;
+    } catch {
+      // An invalid Origin or app origin never falls back to Fetch Metadata.
+    }
+  }
+  return Response.json({ error: "csrf_forbidden" }, { status: 403 });
+}
+
 /** Null when the request may proceed; otherwise the 401/403/503 to return. */
 export async function requireAppAuth(
   env: Env,
@@ -614,6 +639,8 @@ export async function requireAppAuth(
   if (misconfigured) return misconfigured;
   const stored = await readAppSession(env, request);
   if (!stored) return Response.json({ error: "unauthorized" }, { status: 401 });
+  const crossOrigin = cookieMutationDenied(env, request);
+  if (crossOrigin) return crossOrigin;
   const { session, modern } = stored;
   const stale = staleCapsuleSession(env, session);
   if (stale) return stale;
@@ -686,6 +713,10 @@ export async function handleAuthRoute(
   }
 
   if (url.pathname === "/api/auth/logout" && request.method === "POST") {
+    const crossOrigin = config.required
+      ? cookieMutationDenied(env, request)
+      : null;
+    if (crossOrigin) return crossOrigin;
     return new Response(JSON.stringify({ success: true }), {
       headers: {
         "Content-Type": "application/json",

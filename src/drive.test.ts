@@ -593,7 +593,12 @@ describe("drive auth routes", () => {
 
   test("logout clears the session cookie", async () => {
     const env = makeEnv(new MemoryBucket(), AUTH_ENV);
-    const res = await worker.fetch(request("POST", "/api/auth/logout"), env);
+    const res = await worker.fetch(
+      request("POST", "/api/auth/logout", {
+        headers: { origin: "https://storage.example" },
+      }),
+      env,
+    );
     expect(res.status).toBe(200);
     expect(res.headers.get("set-cookie")).toContain("takos_app_session=;");
   });
