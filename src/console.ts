@@ -715,7 +715,7 @@ export function storageConsoleHtml(): string {
   var currentVisible = [];
 
   // ---- Helpers ----
-  function esc(s) { var d = document.createElement("div"); d.textContent = s == null ? "" : s; return d.innerHTML; }
+  function esc(s) { var d = document.createElement("div"); d.textContent = s == null ? "" : s; return d.innerHTML.replaceAll('"', "&quot;").replaceAll("'", "&#39;"); }
   function relTime(s) {
     var time = Date.parse(s); if (!time) return "";
     var diff = (Date.now() - time) / 1000;
