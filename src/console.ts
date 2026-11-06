@@ -776,11 +776,11 @@ export function storageConsoleHtml(): string {
     document.getElementById("splash-text").textContent = t("signinRedirect");
     location.href = "/api/auth/login?return_to=" + encodeURIComponent(location.pathname + location.search);
   }
-  function api(path, init) {
+  function api(path, init, isCurrent) {
     init = init || {};
     init.credentials = "same-origin";
     return fetch(path, init).then(function (r) {
-      if (r.status === 401) { redirectToLogin(); return new Promise(function () {}); }
+      if (r.status === 401 && (!isCurrent || isCurrent())) { redirectToLogin(); return new Promise(function () {}); }
       return r;
     });
   }
@@ -827,20 +827,26 @@ export function storageConsoleHtml(): string {
   });
 
   // ---- Listing / tree ----
+  var listRequest = 0;
   function load() {
+    var request = ++listRequest;
+    function isCurrent() { return request === listRequest; }
     state.loading = true;
     state.failed = false;
     render();
-    api("/api/drive/list").then(function (r) {
+    api("/api/drive/list", null, isCurrent).then(function (r) {
+      if (!isCurrent()) return;
       if (!r.ok) throw new Error("http " + r.status);
       return r.json();
     }).then(function (data) {
+      if (!isCurrent()) return;
       state.files = (data && data.files) || [];
       state.truncated = !!(data && data.truncated);
       state.loading = false;
       renderUsage();
       render();
     }).catch(function () {
+      if (!isCurrent()) return;
       state.loading = false;
       state.failed = true;
       render();
