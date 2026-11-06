@@ -1051,45 +1051,52 @@ export function storageConsoleHtml(): string {
   var previewName = document.getElementById("preview-name");
   var previewTarget = null;
   var previewUrl = null;
+  var previewRequest = 0;
   var PREVIEW_TEXT_MAX = 1024 * 1024;
   function closePreview() {
+    previewRequest++;
     previewEl.classList.remove("open");
     previewBody.innerHTML = "";
     if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = null; }
     previewTarget = null;
   }
   function openPreview(item) {
+    closePreview();
+    var request = previewRequest;
+    function isCurrent() { return request === previewRequest; }
     previewTarget = item;
     previewName.textContent = item.name;
     previewBody.innerHTML = '<div class="preview-fallback">' + esc(t("loading")) + "</div>";
     previewEl.classList.add("open");
     var kind = kindOf(item.name);
     if (kind === "image") {
-      api(fileUrl(item.path)).then(function (r) {
+      api(fileUrl(item.path), null, isCurrent).then(function (r) {
+        if (!isCurrent()) return;
         if (!r.ok) throw new Error("http " + r.status);
         return r.blob();
       }).then(function (blob) {
-        if (previewTarget !== item) return;
+        if (!isCurrent()) return;
         previewUrl = URL.createObjectURL(blob);
         previewBody.innerHTML = "";
         var img = document.createElement("img");
         img.src = previewUrl;
         img.alt = item.name;
         previewBody.appendChild(img);
-      }).catch(function () { fallbackPreview(); });
+      }).catch(function () { if (isCurrent()) fallbackPreview(); });
       return;
     }
     if (kind === "text" && (item.size || 0) <= PREVIEW_TEXT_MAX) {
-      api(fileUrl(item.path)).then(function (r) {
+      api(fileUrl(item.path), null, isCurrent).then(function (r) {
+        if (!isCurrent()) return;
         if (!r.ok) throw new Error("http " + r.status);
         return r.text();
       }).then(function (text) {
-        if (previewTarget !== item) return;
+        if (!isCurrent()) return;
         previewBody.innerHTML = "";
         var pre = document.createElement("pre");
         pre.textContent = text;
         previewBody.appendChild(pre);
-      }).catch(function () { fallbackPreview(); });
+      }).catch(function () { if (isCurrent()) fallbackPreview(); });
       return;
     }
     fallbackPreview(kind === "text" ? "previewTooBig" : "previewNone");
