@@ -50,6 +50,29 @@ direct/self-host の `/mcp` だけは、operator が `published_mcp_auth_token` 
 | DELETE     | `/o/<key>`      | `storage.object.delete`                                |
 | GET        | `/o?prefix=<p>` | `storage.object.list`                                  |
 
+## MCP file operations
+
+MCP の6つの file tool はブラウザー Drive と同じ `drive/` 領域を使います。
+認証済みの caller でも、別の更新を無条件に上書き・削除することはできません。
+`storage_file_read` / `storage_file_info` が返す quoted `etag` を次の操作へ渡します。
+
+- `storage_file_write`: `expected_etag` を省略すると新規作成専用です。既存 file の更新には現在の `expected_etag` が必要で、成功応答は更新後の `etag` を返します。
+- `storage_file_delete`: 現在の `expected_etag` が必須です。
+- `storage_file_move`: `expected_source_etag` が必須で、移動先は既定で新規作成専用です。既存の移動先を置換する場合は `overwrite: true` と、その file の現在の `expected_destination_etag` を指定します。
+
+これまで同じ path を無条件更新した MCP caller は、先に read/info を行い ETag を配送する必要があります。
+不足・不正・競合は MCP の `result.isError: true` で返します。HTTP 200 は tool 成功を意味しません。
+再送前に現在の file を読み、変更内容を確認してください。認証と `drive/` の保存先は変わりません。
+
+ETag は content validator であり upload generation ではありません。同じ bytes のまま HTTP metadata
+だけが変わる場合や ABA の全世代を区別する保証はありません。move は atomic rename ではなく、
+copy 後に source を条件付き削除します。新規宛先への move は既存の条件付き rollback を試みます。
+既存宛先の置換後に source removal が失敗した場合は、宛先を自動復元・削除せず、copy を保持して
+`move_incomplete` を返します。source と destination の両方を再読し、手動で結果を照合してください。
+
+削除の物理 cleanup が失敗すると、論理削除済みの marker が残ることがあります。read/info/list には
+表示せず、旧 ETag の更新と新規作成も拒否します。これは自動復旧ではなく、operator による別の cleanup が必要です。
+
 ## OpenTofu
 
 ```sh

@@ -16,10 +16,12 @@ export class DriveOperationError extends Error {
       | "destination_exists"
       | "revision_conflict"
       | "missing_etag"
+      | "move_incomplete"
       | "too_large",
     message: string,
+    options?: ErrorOptions,
   ) {
-    super(message);
+    super(message, options);
     this.name = "DriveOperationError";
   }
 }
@@ -41,8 +43,8 @@ export async function getDriveObject(
 
 /**
  * Commit a logical delete with an ETag-guarded tombstone before removing the
- * physical key. All supported drive writers use CAS, so a concurrent update
- * can neither be mistaken for this revision nor be deleted afterwards.
+ * physical key. Supported conditional writers cannot reuse the old content
+ * ETag after the fresh marker has committed.
  */
 export async function deleteDriveObject(
   bucket: R2Bucket,
@@ -68,9 +70,11 @@ export async function deleteDriveObject(
 }
 
 /**
- * R2 has no atomic rename. Copy the source stream create-only, then remove the
- * exact source revision via a CAS tombstone. On a source race, roll the copied
- * destination back with its own ETag; no newer file is ever overwritten.
+ * R2 has no atomic rename. Copy create-only by default, or replace a caller's
+ * observed destination content ETag, then remove the source by CAS tombstone.
+ * Create-only copies retain the existing best-effort conditional rollback.
+ * A replacement copy is retained on later failure and must be reconciled;
+ * content ETags cannot prove a safe restoration across metadata-only/ABA writes.
  */
 export async function moveDriveObject(
   bucket: R2Bucket,
@@ -78,6 +82,7 @@ export async function moveDriveObject(
   destinationPath: string,
   expectedSourceEtag: string,
   maximumBytes: number,
+  replacement?: { expectedDestinationEtag: string },
 ): Promise<{ size: number; contentType: string }> {
   const source = await getDriveObject(bucket, sourcePath);
   if (source.size > maximumBytes) {
@@ -100,31 +105,53 @@ export async function moveDriveObject(
   }
   const contentType =
     source.httpMetadata?.contentType ?? "application/octet-stream";
+  if (replacement) {
+    const destination = await getDriveObject(bucket, destinationPath);
+    try {
+      if (destination.httpEtag !== replacement.expectedDestinationEtag) {
+        throw new DriveOperationError(
+          "revision_conflict",
+          `destination changed before move: ${destinationPath}`,
+        );
+      }
+    } finally {
+      await destination.body.cancel();
+    }
+  }
   const copied = await bucket.put(driveKey(destinationPath), source.body, {
     httpMetadata: { contentType },
-    onlyIf: { etagDoesNotMatch: "*" },
+    onlyIf: replacement
+      ? new Headers({ "if-match": replacement.expectedDestinationEtag })
+      : { etagDoesNotMatch: "*" },
   });
   if (!copied) {
     throw new DriveOperationError(
-      "destination_exists",
-      `destination already exists: ${destinationPath}`,
+      replacement ? "revision_conflict" : "destination_exists",
+      `destination already exists or changed: ${destinationPath}`,
     );
   }
   if (!copied.httpEtag) {
     throw new DriveOperationError(
-      "missing_etag",
-      `copied destination has no ETag: ${destinationPath}`,
+      replacement ? "move_incomplete" : "missing_etag",
+      `destination copy has no ETag; inspect both paths before retrying: ${destinationPath}`,
     );
   }
   try {
     await deleteDriveObject(bucket, sourcePath, source.httpEtag);
   } catch (error) {
+    if (replacement) {
+      throw new DriveOperationError(
+        "move_incomplete",
+        "destination was replaced but source removal failed; inspect both paths before retrying",
+        { cause: error },
+      );
+    }
     if (
       error instanceof DriveOperationError &&
       error.code === "revision_conflict"
     ) {
-      // The source is known to remain intact, so roll back only the exact copy.
-      // If rollback races, both copies remain and no unrelated revision moves.
+      // The source remains intact. Compensate only this content ETag; this
+      // does not distinguish same-byte metadata changes or an ABA sequence.
       await deleteDriveObject(bucket, destinationPath, copied.httpEtag).catch(
         () => undefined,
       );
