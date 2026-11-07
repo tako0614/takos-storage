@@ -11,6 +11,11 @@
  * and never flows through this page.
  */
 
+import {
+  MAX_FOLDER_OBJECTS,
+  MAX_FOLDER_TOTAL_BYTES,
+} from "./drive-folder-operations.ts";
+
 const CATALOGS = {
   en: {
     signinRedirect: "Redirecting to sign-in…",
@@ -50,10 +55,10 @@ const CATALOGS = {
     deleteTitle: "Delete forever?",
     deleteBody: "“{name}” will be deleted forever. This can’t be undone.",
     deleteFolderBody:
-      "“{name}” and the {count} files inside will be deleted forever. This can’t be undone.",
+      "Delete the {count} reviewed entries in “{name}” forever? This cannot be undone. Entries are removed individually; a conflict can leave partial results that must be reviewed.",
     deleteConfirm: "Delete",
     renameFolderBody:
-      "{count} files will be copied to the new name and removed.",
+      "Move {count} reviewed entries to the new name. Entries are copied and removed individually. A conflict can leave both copies; review the results before another attempt.",
     loading: "Loading…",
     emptyTitle: "Your drive is empty",
     emptyBody: "Drop files here or use “New” to upload.",
@@ -66,8 +71,18 @@ const CATALOGS = {
       "The file revision or destination no longer matches this action. Review the refreshed list before trying again.",
     errRevision:
       "The file revision is unavailable. Refresh the list before trying again.",
-    folderOperationUnsupported:
-      "This API version does not support renaming or deleting a whole folder. Operate on individual files instead.",
+    folderUnavailable:
+      "Refresh a complete list before this action. Folder actions support up to {count} entries; rename supports at most {size} in total.",
+    folderWorking: "Updating the reviewed folder entries…",
+    folderDone: "{count} reviewed entries completed.",
+    folderResultTitle: "Review the folder operation",
+    folderIncomplete:
+      "The operation stopped before completion. Some entries may have moved or been deleted. Review both paths in the refreshed list before another attempt.",
+    folderUnknown:
+      "The result could not be confirmed. Review both paths in the refreshed list before another attempt; no automatic retry was sent.",
+    folderCompleted: "Confirmed entries: {count}",
+    folderRemaining: "Unprocessed or uncertain entries:",
+    folderDismiss: "Close and review files",
     upTrayTitle: "Uploads",
     upDone: "Done",
     upFailed: "Failed",
@@ -118,10 +133,10 @@ const CATALOGS = {
     deleteTitle: "完全に削除しますか？",
     deleteBody: "「{name}」を完全に削除します。この操作は元に戻せません。",
     deleteFolderBody:
-      "「{name}」と中の {count} 件のファイルを完全に削除します。この操作は元に戻せません。",
+      "「{name}」の確認済み {count} 件を完全に削除しますか？ 元に戻せません。1件ずつ削除するため、競合すると途中までの結果が残り、確認が必要です。",
     deleteConfirm: "削除",
     renameFolderBody:
-      "{count} 件のファイルを新しい名前へコピーして削除します。",
+      "確認済み {count} 件を新しい名前へ移動します。1件ずつコピー・削除するため、競合すると両方に残ることがあります。結果を確認してから次の操作をしてください。",
     loading: "読み込み中…",
     emptyTitle: "ドライブはまだ空です",
     emptyBody:
@@ -135,8 +150,18 @@ const CATALOGS = {
       "ファイルの版または保存先の条件が一致しません。更新された一覧を確認してやり直してください。",
     errRevision:
       "ファイルの版を確認できません。一覧を更新してやり直してください。",
-    folderOperationUnsupported:
-      "このAPI版ではフォルダ全体の名前変更・削除は利用できません。個別のファイルを操作してください。",
+    folderUnavailable:
+      "完全な一覧を更新してから操作してください。フォルダ操作は {count} 件まで、名前変更は合計 {size} までです。",
+    folderWorking: "確認済みのフォルダ内容を処理しています…",
+    folderDone: "確認済み {count} 件の処理が完了しました。",
+    folderResultTitle: "フォルダ操作の結果を確認",
+    folderIncomplete:
+      "操作は途中で停止しました。移動・削除が済んだ項目もあります。更新された一覧で両方のパスを確認してから次の操作をしてください。",
+    folderUnknown:
+      "結果を確認できませんでした。更新された一覧で両方のパスを確認してください。自動再送はしていません。",
+    folderCompleted: "完了を確認した項目: {count} 件",
+    folderRemaining: "未処理または結果未確定の項目:",
+    folderDismiss: "閉じてファイルを確認",
     upTrayTitle: "アップロード",
     upDone: "完了",
     upFailed: "失敗",
@@ -619,6 +644,15 @@ export function storageConsoleHtml(): string {
     </div>
   </dialog>
 
+  <dialog id="folder-result-dialog" aria-labelledby="folder-result-title">
+    <h2 id="folder-result-title" data-i18n="folderResultTitle">${CATALOGS.en.folderResultTitle}</h2>
+    <p id="folder-result-message"></p>
+    <pre id="folder-result-paths" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:40vh;overflow:auto"></pre>
+    <div class="dialog-actions">
+      <button type="button" class="btn" data-close data-i18n="folderDismiss">${CATALOGS.en.folderDismiss}</button>
+    </div>
+  </dialog>
+
   <div class="preview" id="preview">
     <div class="preview-bar">
       <span class="preview-name" id="preview-name"></span>
@@ -636,6 +670,7 @@ export function storageConsoleHtml(): string {
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="toast" id="folder-progress" role="status" aria-live="polite" hidden></div>
 
 <script>
 (function () {
@@ -713,6 +748,8 @@ export function storageConsoleHtml(): string {
   var toastEl = document.getElementById("toast");
   var searchInput = document.getElementById("q");
   var currentVisible = [];
+  var folderBusy = false;
+  var actionEntries = null;
 
   // ---- Helpers ----
   function esc(s) { var d = document.createElement("div"); d.textContent = s == null ? "" : s; return d.innerHTML.replaceAll('"', "&quot;").replaceAll("'", "&#39;"); }
@@ -798,6 +835,60 @@ export function storageConsoleHtml(): string {
   function mutationFailed(error) {
     toast(t(error && (error.status === 412 || error.status === 409) ? "errConflict" : "errAction"));
     load();
+  }
+  function folderSnapshot(item) {
+    if (folderBusy || state.loading || state.failed || state.truncated) return null;
+    var entries = state.files.filter(function (file) { return file.path.indexOf(item.path) === 0; });
+    if (!entries.length || entries.length > ${MAX_FOLDER_OBJECTS} || entries.some(function (file) { return !file.etag; })) return null;
+    return entries.map(function (file) { return { path: file.path, etag: file.etag }; });
+  }
+  function folderUnavailable() {
+    toast(t("folderUnavailable", { count: ${MAX_FOLDER_OBJECTS}, size: fmtBytes(${MAX_FOLDER_TOTAL_BYTES}) }));
+  }
+  function folderResult(data, unknown) {
+    var completed = data && Array.isArray(data.completed) ? data.completed : [];
+    var remaining = data && Array.isArray(data.remaining) ? data.remaining : [];
+    document.getElementById("folder-result-message").textContent = t(unknown ? "folderUnknown" : "folderIncomplete");
+    // Paths are user-controlled. Display text only, including uncertain paths;
+    // never turn server error details into markup or an automatic retry.
+    document.getElementById("folder-result-paths").textContent =
+      t("folderCompleted", { count: completed.length }) + "\\n" + completed.join("\\n") +
+      "\\n\\n" + t("folderRemaining") + "\\n" + remaining.join("\\n");
+    document.getElementById("folder-result-dialog").showModal();
+  }
+  function runFolderOperation(operation, item, destination) {
+    if (folderBusy || !actionEntries) return;
+    var entries = actionEntries.map(function (entry) { return { path: entry.path, etag: entry.etag }; });
+    actionEntries = null;
+    folderBusy = true;
+    var progress = document.getElementById("folder-progress");
+    progress.textContent = t("folderWorking");
+    progress.hidden = false;
+    progress.classList.add("show");
+    var input = { operation: operation, source_path: item.path, entries: entries };
+    if (destination) input.destination_path = destination;
+    api("/api/drive/folder", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input),
+    }).then(function (response) {
+      return response.json().then(function (data) {
+        if (response.ok && data.ok === true && Array.isArray(data.completed) && data.completed.length === entries.length) {
+          toast(t("folderDone", { count: data.completed.length }));
+        } else if (data.error === "folder_operation_incomplete") {
+          folderResult(data, !!data.outcome_uncertain);
+        } else if (response.status === 409 || response.status === 412) {
+          toast(t("errConflict"));
+        } else {
+          folderResult(null, true);
+        }
+      });
+    }).catch(function () {
+      folderResult(null, true);
+    }).finally(function () {
+      folderBusy = false;
+      progress.classList.remove("show");
+      progress.hidden = true;
+      load();
+    });
   }
 
   // ---- Session boot ----
@@ -1188,16 +1279,15 @@ export function storageConsoleHtml(): string {
     e.preventDefault();
     e.stopPropagation();
     var item = currentVisible[Number(kebab.getAttribute("data-item"))];
-    if (!item) return;
+    if (!item || folderBusy) return;
     menuTarget = item;
     itemMenu.querySelector('[data-action="download"]').hidden = item.type === "folder";
     ["rename", "delete"].forEach(function (action) {
       var button = itemMenu.querySelector('[data-action="' + action + '"]');
-      button.disabled = item.type === "folder" || !item.etag;
-      button.title = button.disabled ? t(item.type === "folder" ? "folderOperationUnsupported" : "errRevision") : "";
+      button.disabled = item.type === "folder" ? !folderSnapshot(item) : !item.etag;
+      button.title = button.disabled ? t(item.type === "folder" ? "folderUnavailable" : "errRevision", { count: ${MAX_FOLDER_OBJECTS}, size: fmtBytes(${MAX_FOLDER_TOTAL_BYTES}) }) : "";
     });
-    if (item.type === "folder") toast(t("folderOperationUnsupported"));
-    else if (!item.etag) toast(t("errRevision"));
+    if (item.type === "file" && !item.etag) toast(t("errRevision"));
     openMenuAt(itemMenu, kebab);
   }, true);
 
@@ -1350,15 +1440,17 @@ export function storageConsoleHtml(): string {
       var action = el.getAttribute("data-action");
       var item = menuTarget;
       closeMenus();
-      if (!item) return;
+      if (!item || folderBusy) return;
       if (action === "open") { openItem(item); return; }
       if (action === "download") { download(item); return; }
+      actionEntries = item.type === "folder" ? folderSnapshot(item) : null;
+      if (item.type === "folder" && !actionEntries) { folderUnavailable(); return; }
       actionTarget = item;
       if (action === "rename") {
         nameMode = "rename";
         nameDialogTitle.textContent = t("renameTitle");
-        if (item.type === "folder" && item.count) {
-          nameDialogNote.textContent = t("renameFolderBody", { count: item.count });
+        if (item.type === "folder") {
+          nameDialogNote.textContent = t("renameFolderBody", { count: actionEntries.length });
           nameDialogNote.hidden = false;
         } else {
           nameDialogNote.hidden = true;
@@ -1369,7 +1461,7 @@ export function storageConsoleHtml(): string {
         nameInput.select();
       } else if (action === "delete") {
         deleteBody.textContent = item.type === "folder"
-          ? t("deleteFolderBody", { name: item.name, count: item.count || 0 })
+          ? t("deleteFolderBody", { name: item.name, count: actionEntries.length })
           : t("deleteBody", { name: item.name });
         deleteDialog.showModal();
       }
@@ -1377,6 +1469,7 @@ export function storageConsoleHtml(): string {
   });
 
   nameForm.addEventListener("submit", function (e) {
+    if (folderBusy) { e.preventDefault(); return; }
     var name = nameInput.value.trim();
     if (!name) return;
     if (name.indexOf("/") >= 0) {
@@ -1401,7 +1494,11 @@ export function storageConsoleHtml(): string {
     // rename
     var item = actionTarget;
     if (!item || name === item.name) return;
-    if (item.type === "folder") { toast(t("folderOperationUnsupported")); return; }
+    if (item.type === "folder") {
+      var folderParent = item.path.slice(0, item.path.slice(0, -1).lastIndexOf("/") + 1);
+      runFolderOperation("rename", item, folderParent + name + "/");
+      return;
+    }
     if (!item.etag) { toast(t("errRevision")); load(); return; }
     var parent = item.path.slice(0, item.path.lastIndexOf("/") + 1);
     // Existing server-side CAS move copies create-only, checks the exact source
@@ -1421,8 +1518,8 @@ export function storageConsoleHtml(): string {
   deleteConfirm.addEventListener("click", function () {
     var item = actionTarget;
     deleteDialog.close();
-    if (!item) return;
-    if (item.type === "folder") { toast(t("folderOperationUnsupported")); return; }
+    if (!item || folderBusy) return;
+    if (item.type === "folder") { runFolderOperation("delete", item); return; }
     if (!item.etag) { toast(t("errRevision")); load(); return; }
     api(fileUrl(item.path), {
       method: "DELETE",

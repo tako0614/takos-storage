@@ -40,6 +40,26 @@ direct/self-host の `/mcp` だけは、operator が `published_mcp_auth_token` 
 
 ## HTTP surface
 
+### Browser folder operations
+
+Driveのフォルダメニューから、内容を確認して名前変更・削除できます。確認ダイアログを開いた時点の
+path/ETag一覧を固定し、`POST /api/drive/folder` へ `operation` (`rename` / `delete`)、
+`source_path` (末尾 `/`)、`entries` (`{path, etag}` の配列)を送ります。
+renameには末尾 `/` の `destination_path` も必要です。認証・CSRFと保存先は既存Driveと同じです。
+
+serverはsource prefixの全pageと確認済み一覧を照合し、未確認の追加・更新・削除、残留削除markerを
+変更前に拒否します。root、重複path、prefix外、移動元/先の重複・包含を拒否し、移動先は空である必要があります。
+最大128件、request JSONは256 KiB、renameは既存の1件50 MiB制限と合計128 MiBまでです。
+UIの一覧が途中で切れている場合は操作できません。上限超過は一件も変更する前に413を返します。
+
+各objectを条件付きでコピー・削除するため、フォルダ全体のatomic transactionではありません。
+copyはHTTP/custom metadataを保持し、移動元の削除に失敗してもfolder操作ではcopyを自動rollbackしません。
+途中競合・cleanup失敗・処理中に増えたsource memberでは409 `folder_operation_incomplete` と、
+確認済み `completed`、未処理/不確実な `remaining`、必要なら `failed_path` を返します。
+UIは結果を表示して一覧を更新し、自動再送しません。両方のpathを確認してから次の操作をしてください。
+応答を失った場合も成功と表示せず、手動確認を求めます。完了は最後の読取時点のsnapshotについてであり、
+以後の作成や同bytes metadata変更/ABAまで止める保証ではありません。
+
 | Method     | Path            | Authorization                                          |
 | ---------- | --------------- | ------------------------------------------------------ |
 | GET        | `/healthz`      | none                                                   |
