@@ -40,6 +40,31 @@ direct/self-host の `/mcp` だけは、operator が `published_mcp_auth_token` 
 
 ## HTTP surface
 
+### Interrupted deletion cleanup
+
+削除のphysical cleanupに失敗した項目は、Driveの「削除の後処理」に表示します。
+一覧の続きは「さらに読み込む」でcursorをたどれます。取得済みpageの通常fileと削除途中の項目を保持し、
+古いpageの遅延応答で新しい一覧を巻き戻しません。フォルダ全体の操作は、従来どおり一覧が途中なら拒否します。
+
+`GET /api/drive/list` は、そのpageにmarkerがある場合に `pending_deletions` を返します。
+各項目はrelative `path` と、読取検査の候補になる `cleanup_revision` のみです。revisionはpathと現在marker ETagから計算した
+公開SHA-256 digestで、認可やmetadata世代の証明ではありません。内部のnonce/現在ETagは返しません。
+通常GET/HEADとMCP/Objectのmarker非表示は維持します。
+
+「後処理を確認」で同じ画面のdialogを開くと、`GET /api/drive/cleanup?path=...&cleanup_revision=...` が選択した項目だけを読取検査します。
+UUIDv4形式・現在revisionの確認が成功するまで確定ボタンを有効にしません。不明形式はoperator確認を表示します。
+全markerのbodyを一覧取得時に走査しません。取消し・別dialogのあとに届く古い読取からの表示変更や401遷移も拒否します。
+
+利用者が確認した `POST /api/drive/cleanup` は `{path, cleanup_revision}` のJSON（最大8 KiB）を受け、
+既存Drive認証・CSRF・namespace、現在のmarker・revisionとfresh UUIDv4形式を検査します。
+内部の現在ETagを使って別のfresh nonceへCAS遷移してからphysical cleanupします。
+通常fileとして再作成済みの場合は409、revisionが違えば412で変更しません。cleanup後はcreate-onlyでパスを再利用できます。
+旧empty/不正formatやrevision不明のmarkerは管理者確認として残し、自動で消しません。
+
+もう一度cleanupが失敗すると503 `cleanup_incomplete` になり、応答喪失も含めてUIは成功扱い・自動再送をしません。
+一覧を再読して、必要なら新しいrevisionに対する明示確認を行います。確認中のrevisionは一覧更新で差し替えません。
+同bytes metadata/ABAや、guardを通らない直接R2 writerまでの世代保証は追加しません。旧formatのoperator repairは別途必要です。
+
 ### Browser folder operations
 
 Driveのフォルダメニューから、内容を確認して名前変更・削除できます。確認ダイアログを開いた時点の

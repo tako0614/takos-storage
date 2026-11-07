@@ -353,12 +353,19 @@ describe("workspace drive API", () => {
     ).rejects.toThrow("synthetic physical cleanup failure");
     expect((await worker.fetch(request("GET", path), env)).status).toBe(404);
     const listing = await worker.fetch(request("GET", "/api/drive/list"), env);
-    expect(
-      (await listing.json()) as { files: unknown[]; truncated: boolean },
-    ).toEqual({
-      files: [],
-      truncated: false,
-    });
+    const inventory = (await listing.json()) as {
+      files: unknown[];
+      truncated: boolean;
+      pending_deletions: { path: string; cleanup_revision: string }[];
+    };
+    expect(inventory.files).toEqual([]);
+    expect(inventory.truncated).toBe(false);
+    expect(inventory.pending_deletions.map((entry) => entry.path)).toEqual([
+      "empty.txt",
+    ]);
+    expect(inventory.pending_deletions[0]!.cleanup_revision).toMatch(
+      /^[0-9a-f]{64}$/u,
+    );
     const preconditions: Array<Record<string, string>> = [
       { "if-match": etag },
       { "if-none-match": "*" },

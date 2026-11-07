@@ -23,6 +23,7 @@ class Bucket implements R2Bucket {
     }
   >();
   effects = 0;
+  pageSize = 1000;
   async get(key: string): Promise<R2Object | null> {
     const item = this.objects.get(key);
     if (!item) return null;
@@ -68,15 +69,19 @@ class Bucket implements R2Bucket {
     if (this.objects.delete(key)) this.effects++;
   }
   async list(options?: R2ListOptions) {
-    const objects = await Promise.all(
-      [...this.objects.keys()]
-        .filter((key) => key.startsWith(options?.prefix ?? ""))
-        .sort()
-        .map((key) => this.get(key)),
-    );
+    const all = [...this.objects.keys()]
+      .filter(
+        (key) =>
+          key.startsWith(options?.prefix ?? "") &&
+          (!options?.cursor || key > options.cursor),
+      )
+      .sort();
+    const keys = all.slice(0, Math.min(this.pageSize, options?.limit ?? 1000));
+    const objects = await Promise.all(keys.map((key) => this.get(key)));
     return {
       objects: objects.filter((x): x is R2Object => x !== null),
-      truncated: false,
+      truncated: all.length > keys.length,
+      ...(all.length > keys.length ? { cursor: keys.at(-1) } : {}),
     };
   }
 }
@@ -89,6 +94,7 @@ type Listener = (event: {
 class Element {
   value = "";
   textContent = "";
+  title = "";
   innerHTML = "";
   hidden = false;
   disabled = false;
@@ -188,7 +194,14 @@ async function until(check: () => boolean) {
   }
 }
 
-async function fixture(options: { loseFolderAck?: boolean } = {}) {
+async function fixture(
+  options: {
+    loseFolderAck?: boolean;
+    loseCleanupAck?: boolean;
+    pageResponse?: (response: Response) => Promise<Response>;
+    cleanupReviewResponse?: (response: Response) => Promise<Response>;
+  } = {},
+) {
   const bucket = new Bucket();
   const env: Env = { BUCKET: bucket, ALLOW_UNAUTHENTICATED_DRIVE: "1" };
   const requests: { method: string; path: string; status: number }[] = [];
@@ -269,6 +282,17 @@ async function fixture(options: { loseFolderAck?: boolean } = {}) {
         await response.body?.cancel();
         throw new Error("synthetic loss after the real Worker completed");
       }
+      if (options.loseCleanupAck && path === "/api/drive/cleanup") {
+        await response.body?.cancel();
+        throw new Error("synthetic cleanup acknowledgement loss after commit");
+      }
+      if (options.pageResponse && path.startsWith("/api/drive/list?cursor="))
+        return options.pageResponse(response);
+      if (
+        options.cleanupReviewResponse &&
+        path.startsWith("/api/drive/cleanup?")
+      )
+        return options.cleanupReviewResponse(response);
       return response;
     },
     URL,
@@ -331,6 +355,7 @@ async function fixture(options: { loseFolderAck?: boolean } = {}) {
     writes,
     client,
     node,
+    location: context.location as { href: string },
     refresh,
     create,
     item,
@@ -611,5 +636,302 @@ describe("console CAS callers against the product HTTP API", () => {
       "retained",
     );
     expect(f.node("toast").textContent).not.toContain("completed");
+  });
+
+  test("an interrupted folder deletion appears after refresh and requires explicit cleanup confirmation", async () => {
+    const f = await fixture();
+    await f.create("folder/");
+    await f.create("folder/child", "only copy");
+    await f.refresh();
+    const remove = f.bucket.delete.bind(f.bucket);
+    f.bucket.delete = async () => {
+      throw new Error("synthetic cleanup failure");
+    };
+    f.rename(f.item("folder"), "retained");
+    await until(() => f.node("folder-result-dialog").open);
+    f.node("folder-result-dialog").close();
+    f.bucket.delete = remove;
+    await f.refresh();
+    expect(f.node("pending-list").children).toHaveLength(1);
+    f.node("pending-list").children[0]!.children[1]!.click();
+    expect(f.node("cleanup-dialog").open).toBe(true);
+    expect(
+      f.writes().filter((x) => x.path === "/api/drive/cleanup"),
+    ).toHaveLength(0);
+    f.node("cleanup-dialog").close();
+    f.node("cleanup-confirm").click();
+    expect(
+      f.writes().filter((x) => x.path === "/api/drive/cleanup"),
+    ).toHaveLength(0);
+    f.node("pending-list").children[0]!.children[1]!.click();
+    await until(() => !f.node("cleanup-confirm").disabled);
+    f.node("cleanup-confirm").click();
+    await until(() => f.writes().some((x) => x.path === "/api/drive/cleanup"));
+    await until(
+      () =>
+        !f.client.state.loading && f.node("pending-list").children.length === 0,
+    );
+    expect(
+      f
+        .writes()
+        .filter((x) => x.path === "/api/drive/cleanup")
+        .map((x) => x.status),
+    ).toEqual([200]);
+    expect(
+      await (await f.send("/api/drive/file/retained%2Fchild")).text(),
+    ).toBe("only copy");
+    expect((await f.create("folder/child", "reused path")).status).toBe(201);
+  });
+});
+
+async function interruptedDeletion(
+  options: Parameters<typeof fixture>[0] = {},
+) {
+  const f = await fixture(options);
+  await f.create("pending/child", "retained content");
+  const source = (await (await f.send("/api/drive/list")).json()) as {
+    files: { path: string; etag: string }[];
+  };
+  const remove = f.bucket.delete.bind(f.bucket);
+  f.bucket.delete = async () => {
+    throw new Error("synthetic physical cleanup failure");
+  };
+  const moved = await f.send("/api/drive/folder", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      operation: "rename",
+      source_path: "pending/",
+      destination_path: "retained/",
+      entries: source.files,
+    }),
+  });
+  expect(moved.status).toBe(409);
+  f.bucket.delete = remove;
+  await f.refresh();
+  return f;
+}
+
+describe("Console interrupted-deletion recovery", () => {
+  test("a cancelled inspection cannot redirect or overwrite the next verified confirmation", async () => {
+    let release!: () => void,
+      started = false,
+      once = true;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const f = await interruptedDeletion({
+      cleanupReviewResponse: async (response) => {
+        if (once) {
+          once = false;
+          started = true;
+          await gate;
+          await response.body?.cancel();
+          return new Response("", { status: 401 });
+        }
+        return response;
+      },
+    });
+    f.node("pending-list").children[0]!.children[1]!.click();
+    await until(() => started);
+    f.node("cleanup-dialog").close();
+    f.node("pending-list").children[0]!.children[1]!.click();
+    await until(() => !f.node("cleanup-confirm").disabled);
+    release();
+    await Bun.sleep(15);
+    expect(f.location.href).toBe("");
+    expect(f.node("cleanup-body").textContent).toContain("pending/child");
+    expect(f.node("cleanup-confirm").disabled).toBe(false);
+    f.node("cleanup-confirm").click();
+    await until(() => f.writes().some((x) => x.path === "/api/drive/cleanup"));
+    expect(
+      f
+        .writes()
+        .filter((x) => x.path === "/api/drive/cleanup")
+        .map((x) => x.status),
+    ).toEqual([200]);
+  });
+
+  test("unknown 36-byte marker format is checked before cleanup confirmation can be enabled", async () => {
+    const f = await fixture();
+    await f.bucket.put("drive/unknown", "x".repeat(36), {
+      customMetadata: { "takos-storage-deleting": "1" },
+    });
+    await f.refresh();
+    f.node("pending-list").children[0]!.children[1]!.click();
+    expect(f.node("cleanup-confirm").disabled).toBe(true);
+    await until(() =>
+      f.node("cleanup-body").textContent.includes("operator review"),
+    );
+    expect(f.node("cleanup-confirm").disabled).toBe(true);
+    f.node("cleanup-confirm").click();
+    expect(
+      f.writes().filter((x) => x.path === "/api/drive/cleanup"),
+    ).toHaveLength(0);
+  });
+
+  test("a pending item on a later R2 page is explicitly loaded and can be cleaned up", async () => {
+    const f = await interruptedDeletion();
+    await f.create("aaa.txt", "first page");
+    f.bucket.pageSize = 1;
+    await f.refresh();
+    expect(f.node("pending-list").children).toHaveLength(0);
+    expect(f.node("load-more").hidden).toBe(false);
+    f.node("load-more").click();
+    await until(
+      () =>
+        !f.client.state.loading && f.node("pending-list").children.length === 1,
+    );
+    expect(f.client.state.files.map((file) => file.path)).toEqual(["aaa.txt"]);
+    f.node("pending-list").children[0]!.children[1]!.click();
+    await until(() => !f.node("cleanup-confirm").disabled);
+    f.node("cleanup-confirm").click();
+    await until(() => f.writes().some((x) => x.path === "/api/drive/cleanup"));
+    expect(
+      f
+        .writes()
+        .filter((x) => x.path === "/api/drive/cleanup")
+        .map((x) => x.status),
+    ).toEqual([200]);
+    expect(
+      await (await f.send("/api/drive/file/retained%2Fchild")).text(),
+    ).toBe("retained content");
+  });
+
+  test("a retired page read cannot append stale pending rows after a fresh list", async () => {
+    let release!: () => void,
+      started = false,
+      once = true;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const f = await interruptedDeletion({
+      pageResponse: async (response) => {
+        if (once) {
+          once = false;
+          started = true;
+          await gate;
+        }
+        return response;
+      },
+    });
+    await f.create("aaa.txt", "first page");
+    f.bucket.pageSize = 1;
+    await f.refresh();
+    f.node("load-more").click();
+    await until(() => started);
+    await f.refresh();
+    release();
+    await Bun.sleep(15);
+    expect(f.node("pending-list").children).toHaveLength(0);
+    expect(f.client.state.files.map((file) => file.path)).toEqual(["aaa.txt"]);
+    expect(f.client.state.loading).toBe(false);
+    f.node("load-more").click();
+    await until(
+      () =>
+        !f.client.state.loading && f.node("pending-list").children.length === 1,
+    );
+  });
+
+  test("cleanup confirmation keeps its old revision when another attempt advances the marker", async () => {
+    const f = await interruptedDeletion();
+    f.node("pending-list").children[0]!.children[1]!.click();
+    await until(() => !f.node("cleanup-confirm").disabled);
+    await f.bucket.put("drive/pending/child", crypto.randomUUID(), {
+      customMetadata: { "takos-storage-deleting": "1" },
+    });
+    await f.refresh();
+    const effects = f.bucket.effects;
+    await until(() => !f.node("cleanup-confirm").disabled);
+    f.node("cleanup-confirm").click();
+    await until(() => f.writes().some((x) => x.path === "/api/drive/cleanup"));
+    expect(
+      f
+        .writes()
+        .filter((x) => x.path === "/api/drive/cleanup")
+        .map((x) => x.status),
+    ).toEqual([412]);
+    expect(f.bucket.effects).toBe(effects);
+  });
+
+  test("unknown cleanup ACK refreshes inventory without automatic replay or success", async () => {
+    const f = await interruptedDeletion({ loseCleanupAck: true });
+    f.node("pending-list").children[0]!.children[1]!.click();
+    await until(() => !f.node("cleanup-confirm").disabled);
+    f.node("cleanup-confirm").click();
+    await until(() => f.node("folder-result-dialog").open);
+    await until(
+      () =>
+        !f.client.state.loading && f.node("pending-list").children.length === 0,
+    );
+    expect(f.node("folder-result-title").textContent).toContain(
+      "deletion cleanup",
+    );
+    expect(f.node("folder-result-message").textContent).toContain(
+      "could not be confirmed",
+    );
+    expect(
+      f
+        .writes()
+        .filter((x) => x.path === "/api/drive/cleanup")
+        .map((x) => x.status),
+    ).toEqual([200]);
+    expect(f.node("toast").textContent).not.toContain("cleanup finished");
+    expect((await f.create("pending/child", "new")).status).toBe(201);
+  });
+
+  test("another cleanup failure requires a fresh inventory and a separate manual confirmation", async () => {
+    const f = await interruptedDeletion(),
+      remove = f.bucket.delete.bind(f.bucket);
+    f.bucket.delete = async () => {
+      throw new Error("synthetic second cleanup failure");
+    };
+    f.node("pending-list").children[0]!.children[1]!.click();
+    await until(() => !f.node("cleanup-confirm").disabled);
+    f.node("cleanup-confirm").click();
+    await until(() => f.node("folder-result-dialog").open);
+    await until(() => !f.client.state.loading);
+    expect(
+      f
+        .writes()
+        .filter((x) => x.path === "/api/drive/cleanup")
+        .map((x) => x.status),
+    ).toEqual([503]);
+    f.node("folder-result-dialog").close();
+    f.bucket.delete = remove;
+    f.node("pending-list").children[0]!.children[1]!.click();
+    await until(() => !f.node("cleanup-confirm").disabled);
+    f.node("cleanup-confirm").click();
+    await until(
+      () =>
+        f.writes().filter((x) => x.path === "/api/drive/cleanup").length === 2,
+    );
+    expect(
+      f
+        .writes()
+        .filter((x) => x.path === "/api/drive/cleanup")
+        .map((x) => x.status),
+    ).toEqual([503, 200]);
+    expect(
+      await (await f.send("/api/drive/file/retained%2Fchild")).text(),
+    ).toBe("retained content");
+  });
+
+  test("legacy empty markers stay visible but cannot invoke self-service cleanup", async () => {
+    const f = await fixture();
+    await f.bucket.put("drive/legacy", "", {
+      customMetadata: { "takos-storage-deleting": "1" },
+    });
+    await f.refresh();
+    const button = f.node("pending-list").children[0]!.children[1]!;
+    expect(button.disabled).toBe(true);
+    expect(button.title).toContain("operator review");
+    const effects = f.bucket.effects;
+    button.click();
+    await Bun.sleep(10);
+    expect(
+      f.writes().filter((x) => x.path === "/api/drive/cleanup"),
+    ).toHaveLength(0);
+    expect(f.bucket.effects).toBe(effects);
   });
 });
