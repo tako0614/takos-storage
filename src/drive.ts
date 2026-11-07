@@ -28,6 +28,7 @@ import {
   deleteDriveObject,
   DRIVE_PREFIX,
   DriveOperationError,
+  exactContentEtag as exactEtag,
   getDriveObject,
   isDriveDeletionTombstone,
   moveDriveObject,
@@ -83,22 +84,15 @@ function drivePath(pathname: string): string | null {
   }
 }
 
-function exactEtag(value: string | null): string | null {
-  const etag = value?.trim() ?? "";
-  return etag &&
-    etag !== "*" &&
-    etag.length <= 256 &&
-    !etag.includes(",") &&
-    !/[\u0000-\u001f\u007f]/u.test(etag)
-    ? etag
-    : null;
-}
-
-function writePrecondition(
+export function writePrecondition(
   request: Request,
+  options: { createOnlyByDefault?: boolean } = {},
 ): { onlyIf: Headers } | { response: Response } {
   const ifMatch = request.headers.get("if-match");
   const ifNoneMatch = request.headers.get("if-none-match");
+  if (ifMatch === null && ifNoneMatch === null && options.createOnlyByDefault) {
+    return { onlyIf: new Headers({ "if-none-match": "*" }) };
+  }
   if ((ifMatch === null) === (ifNoneMatch === null)) {
     return {
       response: json(
