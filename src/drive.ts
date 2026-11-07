@@ -35,6 +35,12 @@ import {
 } from "./drive-operations.ts";
 import { isValidDrivePath } from "./drive-path.ts";
 import {
+  finishPendingDeletion,
+  inspectPendingDeletion,
+  pendingDeletionRevision,
+  PendingDeletionError,
+} from "./drive-delete-recovery.ts";
+import {
   FolderOperationError,
   MAX_FOLDER_REQUEST_BYTES,
   parseFolderOperation,
@@ -142,6 +148,72 @@ export async function handleDriveRoute(
   const unauthorized = await requireAppAuth(env, request);
   if (unauthorized) return unauthorized;
 
+  if (url.pathname === "/api/drive/cleanup") {
+    const inspect = request.method === "GET";
+    if (!inspect && request.method !== "POST")
+      return json({ error: "method_not_allowed" }, 405);
+    let input: unknown;
+    if (inspect) {
+      input = {
+        path: url.searchParams.get("path"),
+        cleanup_revision: url.searchParams.get("cleanup_revision"),
+      };
+    } else {
+      const bounded = await boundedRequestBody(request, MAX_MOVE_REQUEST_BYTES);
+      if (!bounded.ok) return json({ error: bounded.error }, bounded.status);
+      try {
+        input = await new Response(bounded.body).json();
+      } catch (error) {
+        return json(
+          {
+            error:
+              error instanceof RequestBodyTooLargeError
+                ? "request_too_large"
+                : "invalid_json",
+          },
+          error instanceof RequestBodyTooLargeError ? 413 : 400,
+        );
+      } finally {
+        await bounded.dispose();
+      }
+    }
+    if (!input || typeof input !== "object" || Array.isArray(input))
+      return json({ error: "invalid_cleanup" }, 400);
+    const { path, cleanup_revision: revision } = input as Record<
+      string,
+      unknown
+    >;
+    if (
+      typeof path !== "string" ||
+      !isValidDrivePath(path) ||
+      typeof revision !== "string" ||
+      !/^[0-9a-f]{64}$/u.test(revision)
+    ) {
+      return json({ error: "invalid_cleanup" }, 400);
+    }
+    try {
+      if (inspect) {
+        await inspectPendingDeletion(env.BUCKET, path, revision);
+        return json({
+          ok: true,
+          recoverable: true,
+          path,
+          cleanup_revision: revision,
+        });
+      }
+      await finishPendingDeletion(env.BUCKET, path, revision);
+      return json({ ok: true, path });
+    } catch (error) {
+      if (error instanceof PendingDeletionError)
+        return json({ error: error.code }, error.status);
+      if (error instanceof DriveOperationError) return operationError(error);
+      return json(
+        { error: "cleanup_incomplete", reconciliation_required: true },
+        503,
+      );
+    }
+  }
+
   if (url.pathname === "/api/drive/folder") {
     if (request.method !== "POST")
       return json({ error: "method_not_allowed" }, 405);
@@ -194,6 +266,15 @@ export async function handleDriveRoute(
       include: ["customMetadata"],
       ...(cursor ? { cursor } : {}),
     });
+    const pending = await Promise.all(
+      listing.objects.filter(isDriveDeletionTombstone).map(async (object) => {
+        const path = object.key.slice(DRIVE_PREFIX.length);
+        return {
+          path,
+          cleanup_revision: await pendingDeletionRevision(path, object),
+        };
+      }),
+    );
     return json({
       files: listing.objects
         .filter((object) => !isDriveDeletionTombstone(object))
@@ -204,6 +285,7 @@ export async function handleDriveRoute(
           etag: object.httpEtag ?? null,
         })),
       truncated: listing.truncated,
+      ...(pending.length ? { pending_deletions: pending } : {}),
       ...(listing.truncated && listing.cursor
         ? { cursor: listing.cursor }
         : {}),

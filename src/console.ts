@@ -29,7 +29,28 @@ const CATALOGS = {
     navFiles: "My Drive",
     navRecent: "Recent",
     usage: "{count} files · {size}",
-    usageTruncated: "Showing the first 1000 files only.",
+    usageTruncated: "More items are available. Load more to include them.",
+    loadMore: "Load more",
+    pendingTitle: "Finish interrupted deletions",
+    pendingBody:
+      "These deletions need cleanup before their paths can be reused.",
+    cleanupAction: "Finish cleanup",
+    cleanupReview: "Review cleanup",
+    cleanupChecking: "Checking this deletion…",
+    cleanupCheckFailed:
+      "The deletion could not be checked. Close this dialog and review it again.",
+    cleanupTitle: "Finish this deletion?",
+    cleanupBody:
+      "Finish cleanup for “{name}”? Only a pending deletion can be cleaned up. Review the refreshed list if its state has changed.",
+    cleanupOperator:
+      "This deletion needs operator review. No automatic cleanup is available.",
+    cleanupDone: "Deletion cleanup finished.",
+    cleanupChanged:
+      "The deletion state changed. Review the refreshed list before another action.",
+    cleanupUnknown:
+      "Cleanup could not be confirmed. Review the refreshed list before another action. No automatic retry was sent.",
+    cleanupResultTitle: "Review deletion cleanup",
+    cleanupWorking: "Finishing the selected deletion…",
     home: "My Drive",
     headingRecent: "Recent",
     headingResults: "Search results",
@@ -107,7 +128,28 @@ const CATALOGS = {
     navFiles: "マイドライブ",
     navRecent: "最近",
     usage: "{count} 個のファイル · {size}",
-    usageTruncated: "先頭 1000 件のみ表示しています。",
+    usageTruncated: "続きの項目があります。「さらに読み込む」で表示できます。",
+    loadMore: "さらに読み込む",
+    pendingTitle: "削除の後処理",
+    pendingBody:
+      "同じパスを再び使うには、残っている削除の後処理を完了してください。",
+    cleanupAction: "後処理を完了",
+    cleanupReview: "後処理を確認",
+    cleanupChecking: "削除の状態を確認しています…",
+    cleanupCheckFailed:
+      "削除の状態を確認できませんでした。この画面を閉じて、もう一度確認してください。",
+    cleanupTitle: "削除の後処理を完了しますか？",
+    cleanupBody:
+      "「{name}」の後処理を完了しますか？ 削除途中の項目だけが対象です。状態が変わっている場合は、更新された一覧を確認してください。",
+    cleanupOperator:
+      "この削除は管理者による確認が必要です。自動では後処理できません。",
+    cleanupDone: "削除の後処理が完了しました。",
+    cleanupChanged:
+      "削除の状態が変わりました。更新された一覧を確認してください。",
+    cleanupUnknown:
+      "後処理の結果を確認できませんでした。更新された一覧を確認してください。自動再送はしていません。",
+    cleanupResultTitle: "削除の後処理を確認",
+    cleanupWorking: "選択した削除の後処理をしています…",
     home: "マイドライブ",
     headingRecent: "最近",
     headingResults: "検索結果",
@@ -353,6 +395,13 @@ export function storageConsoleHtml(): string {
     padding: 10px 16px 6px; position: sticky; top: 0; background: var(--panel);
     border-radius: 16px 16px 0 0; z-index: 5; min-height: 52px;
   }
+  .pending-deletions { padding: 16px; margin-bottom: 16px; border: 1px solid var(--line); border-radius: 12px; }
+  .pending-deletions h2 { font-size: 16px; margin: 0 0 8px; }
+  .pending-deletions p { margin: 0 0 12px; color: var(--text-soft); }
+  .pending-list { list-style: none; margin: 0; padding: 0; }
+  .pending-list li { display: flex; align-items: center; gap: 12px; justify-content: space-between; padding: 8px 0; flex-wrap: wrap; }
+  .pending-list .pending-path { min-width: 0; flex: 1 1 160px; overflow-wrap: anywhere; }
+  #load-more { margin: 16px auto; }
   .crumbs { display: flex; align-items: center; gap: 2px; flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; font-size: 20px; }
   .crumb { border: none; background: transparent; cursor: pointer; font-size: 20px; color: var(--text-soft); padding: 4px 8px; border-radius: 8px; max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
   .crumb:hover { background: var(--hover); color: var(--text); }
@@ -592,6 +641,11 @@ export function storageConsoleHtml(): string {
         </div>
       </div>
 
+      <section id="pending-deletions" class="pending-deletions" aria-labelledby="pending-title" hidden>
+        <h2 id="pending-title" data-i18n="pendingTitle">${CATALOGS.en.pendingTitle}</h2>
+        <p data-i18n="pendingBody">${CATALOGS.en.pendingBody}</p>
+        <ul id="pending-list" class="pending-list"></ul>
+      </section>
       <div class="list-head" id="list-head">
         <button type="button" class="sortable" data-sort="name"><span data-i18n="colName">${CATALOGS.en.colName}</span><span class="sort-arrow" data-arrow="name"></span></button>
         <button type="button" class="sortable col-size" data-sort="size"><span data-i18n="colSize">${CATALOGS.en.colSize}</span><span class="sort-arrow" data-arrow="size"></span></button>
@@ -601,6 +655,7 @@ export function storageConsoleHtml(): string {
       <ul class="rows" id="rows"></ul>
       <div class="cards" id="cards" hidden></div>
       <div class="state" id="state" hidden></div>
+      <button type="button" class="btn" id="load-more" hidden data-i18n="loadMore">${CATALOGS.en.loadMore}</button>
       <div class="drop-overlay" id="drop-overlay"><span data-i18n="dropHint">${CATALOGS.en.dropHint}</span></div>
     </main>
   </div>
@@ -641,6 +696,15 @@ export function storageConsoleHtml(): string {
     <div class="dialog-actions">
       <button type="button" class="btn" data-close data-i18n="cancel">${CATALOGS.en.cancel}</button>
       <button type="button" class="btn danger" id="delete-confirm" data-i18n="deleteConfirm">${CATALOGS.en.deleteConfirm}</button>
+    </div>
+  </dialog>
+
+  <dialog id="cleanup-dialog" aria-labelledby="cleanup-title">
+    <h2 id="cleanup-title" data-i18n="cleanupTitle">${CATALOGS.en.cleanupTitle}</h2>
+    <p id="cleanup-body"></p>
+    <div class="dialog-actions">
+      <button type="button" class="btn" data-close data-i18n="cancel">${CATALOGS.en.cancel}</button>
+      <button type="button" class="btn primary" id="cleanup-confirm" data-i18n="cleanupAction">${CATALOGS.en.cleanupAction}</button>
     </div>
   </dialog>
 
@@ -723,6 +787,8 @@ export function storageConsoleHtml(): string {
   // ---- State ----
   var state = {
     files: [],            // [{path,size,uploaded,etag}] relative to the drive root
+    pending: [],
+    cursor: null,
     truncated: false,
     nav: "files",        // files | recent
     path: "",            // current folder, "" or "a/b/"
@@ -749,6 +815,9 @@ export function storageConsoleHtml(): string {
   var searchInput = document.getElementById("q");
   var currentVisible = [];
   var folderBusy = false;
+  var cleanupBusy = false;
+  var cleanupTarget = null;
+  var cleanupVerified = null;
   var actionEntries = null;
 
   // ---- Helpers ----
@@ -845,10 +914,11 @@ export function storageConsoleHtml(): string {
   function folderUnavailable() {
     toast(t("folderUnavailable", { count: ${MAX_FOLDER_OBJECTS}, size: fmtBytes(${MAX_FOLDER_TOTAL_BYTES}) }));
   }
-  function folderResult(data, unknown) {
+  function folderResult(data, unknown, cleanup) {
     var completed = data && Array.isArray(data.completed) ? data.completed : [];
     var remaining = data && Array.isArray(data.remaining) ? data.remaining : [];
-    document.getElementById("folder-result-message").textContent = t(unknown ? "folderUnknown" : "folderIncomplete");
+    document.getElementById("folder-result-title").textContent = t(cleanup ? "cleanupResultTitle" : "folderResultTitle");
+    document.getElementById("folder-result-message").textContent = t(cleanup === "operator" ? "cleanupOperator" : cleanup ? "cleanupUnknown" : unknown ? "folderUnknown" : "folderIncomplete");
     // Paths are user-controlled. Display text only, including uncertain paths;
     // never turn server error details into markup or an automatic retry.
     document.getElementById("folder-result-paths").textContent =
@@ -857,10 +927,11 @@ export function storageConsoleHtml(): string {
     document.getElementById("folder-result-dialog").showModal();
   }
   function runFolderOperation(operation, item, destination) {
-    if (folderBusy || !actionEntries) return;
+    if (folderBusy || cleanupBusy || !actionEntries) return;
     var entries = actionEntries.map(function (entry) { return { path: entry.path, etag: entry.etag }; });
     actionEntries = null;
     folderBusy = true;
+    renderPending();
     var progress = document.getElementById("folder-progress");
     progress.textContent = t("folderWorking");
     progress.hidden = false;
@@ -919,20 +990,42 @@ export function storageConsoleHtml(): string {
 
   // ---- Listing / tree ----
   var listRequest = 0;
-  function load() {
+  var listCursors = [];
+  function mergeByPath(previous, next) {
+    var byPath = Object.create(null);
+    previous.concat(next).forEach(function (item) { byPath[item.path] = item; });
+    return Object.keys(byPath).map(function (path) { return byPath[path]; });
+  }
+  function load(more) {
+    var append = more === true;
+    if (append && (state.loading || state.failed || !state.cursor)) return;
+    var cursor = append ? state.cursor : null;
+    var previousFiles = append ? state.files.slice() : [];
+    var previousPending = append ? state.pending.slice() : [];
+    if (!append) listCursors = [];
     var request = ++listRequest;
     function isCurrent() { return request === listRequest; }
     state.loading = true;
     state.failed = false;
     render();
-    api("/api/drive/list", null, isCurrent).then(function (r) {
+    api("/api/drive/list" + (cursor ? "?cursor=" + encodeURIComponent(cursor) : ""), null, isCurrent).then(function (r) {
       if (!isCurrent()) return;
       if (!r.ok) throw new Error("http " + r.status);
       return r.json();
     }).then(function (data) {
       if (!isCurrent()) return;
-      state.files = (data && data.files) || [];
+      var next = data && data.cursor;
+      if (data && data.truncated && (typeof next !== "string" || !next || next.length > 4096 || listCursors.indexOf(next) !== -1)) throw new Error("invalid_list_cursor");
+      if (data && data.truncated) listCursors.push(next);
+      var files = (data && data.files) || [];
+      var pending = (data && data.pending_deletions) || [];
+      var newFiles = Object.create(null), newPending = Object.create(null);
+      files.forEach(function (file) { newFiles[file.path] = true; });
+      pending.forEach(function (entry) { newPending[entry.path] = true; });
+      state.files = mergeByPath(previousFiles, files).filter(function (file) { return !newPending[file.path]; });
+      state.pending = mergeByPath(previousPending, pending).filter(function (entry) { return !newFiles[entry.path]; });
       state.truncated = !!(data && data.truncated);
+      state.cursor = state.truncated ? next : null;
       state.loading = false;
       renderUsage();
       render();
@@ -943,6 +1036,91 @@ export function storageConsoleHtml(): string {
       render();
     });
   }
+  document.getElementById("load-more").addEventListener("click", function () { load(true); });
+
+  function renderPending() {
+    var panel = document.getElementById("pending-deletions");
+    var list = document.getElementById("pending-list");
+    panel.hidden = state.pending.length === 0;
+    list.replaceChildren();
+    state.pending.forEach(function (entry) {
+      var row = document.createElement("li");
+      var path = document.createElement("span");
+      path.className = "pending-path";
+      path.textContent = entry.path;
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "btn";
+      button.textContent = t("cleanupReview");
+      button.disabled = !entry.cleanup_revision || state.loading || state.failed || folderBusy || cleanupBusy;
+      if (!entry.cleanup_revision) button.title = t("cleanupOperator");
+      button.addEventListener("click", function () {
+        if (button.disabled || state.loading || state.failed || folderBusy || cleanupBusy) return;
+        // Keep the selected revision even when a list read completes while
+        // this confirmation remains open.
+        var target = { path: entry.path, cleanup_revision: entry.cleanup_revision };
+        cleanupTarget = target;
+        cleanupVerified = null;
+        var dialog = document.getElementById("cleanup-dialog");
+        var confirm = document.getElementById("cleanup-confirm");
+        var body = document.getElementById("cleanup-body");
+        confirm.disabled = true;
+        body.textContent = t("cleanupChecking");
+        dialog.showModal();
+        function isCurrentReview() { return cleanupTarget === target && dialog.open; }
+        api("/api/drive/cleanup?path=" + encodeURIComponent(target.path) + "&cleanup_revision=" + encodeURIComponent(target.cleanup_revision), null, isCurrentReview).then(function (response) {
+          if (!isCurrentReview()) return;
+          return response.json().then(function (data) {
+            if (!isCurrentReview()) return;
+            if (response.ok && data.recoverable === true && data.path === target.path && data.cleanup_revision === target.cleanup_revision) {
+              cleanupVerified = target;
+              body.textContent = t("cleanupBody", { name: target.path });
+              confirm.disabled = false;
+            } else {
+              body.textContent = t(data.error === "cleanup_requires_operator_review" ? "cleanupOperator" : "cleanupCheckFailed");
+            }
+          });
+        }).catch(function () {
+          if (isCurrentReview()) body.textContent = t("cleanupCheckFailed");
+        });
+      });
+      row.append(path, button);
+      list.appendChild(row);
+    });
+    var more = document.getElementById("load-more");
+    more.hidden = !state.truncated;
+    more.disabled = state.loading || state.failed || folderBusy || cleanupBusy;
+  }
+  document.getElementById("cleanup-confirm").addEventListener("click", function () {
+    var target = cleanupTarget;
+    if (!target || cleanupVerified !== target || !document.getElementById("cleanup-dialog").open || cleanupBusy || folderBusy) return;
+    cleanupTarget = null;
+    cleanupVerified = null;
+    document.getElementById("cleanup-dialog").close();
+    cleanupBusy = true;
+    renderPending();
+    var progress = document.getElementById("folder-progress");
+    progress.textContent = t("cleanupWorking");
+    progress.hidden = false;
+    progress.classList.add("show");
+    api("/api/drive/cleanup", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(target),
+    }).then(function (response) {
+      return response.json().then(function (data) {
+        if (response.ok && data.ok === true && data.path === target.path) toast(t("cleanupDone"));
+        else if (data.error === "cleanup_requires_operator_review") folderResult({ remaining: [target.path] }, true, "operator");
+        else if (response.status === 404 || response.status === 409 || response.status === 412) toast(t("cleanupChanged"));
+        else folderResult({ remaining: [target.path] }, true, "cleanup");
+      });
+    }).catch(function () {
+      folderResult({ remaining: [target.path] }, true, "cleanup");
+    }).finally(function () {
+      cleanupBusy = false;
+      progress.classList.remove("show");
+      progress.hidden = true;
+      load();
+    });
+  });
   function renderUsage() {
     var total = 0, count = 0;
     state.files.forEach(function (f) {
@@ -1047,6 +1225,7 @@ export function storageConsoleHtml(): string {
   }
   function render() {
     renderCrumbs();
+    renderPending();
     document.querySelectorAll("[data-nav]").forEach(function (el) {
       el.setAttribute("aria-pressed", String(!state.query && el.getAttribute("data-nav") === state.nav));
     });
