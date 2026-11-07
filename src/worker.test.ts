@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 
 import { createStorageWorker } from "./worker.ts";
 import type {
@@ -20,7 +21,15 @@ const TOKENS = {
 } as const;
 
 class MemoryBucket implements R2Bucket {
-  readonly store = new Map<string, { data: Uint8Array; contentType: string }>();
+  pageSize = 1000;
+  readonly store = new Map<
+    string,
+    {
+      data: Uint8Array;
+      contentType: string;
+      customMetadata?: Record<string, string>;
+    }
+  >();
 
   async get(key: string): Promise<R2Object | null> {
     const entry = this.store.get(key);
@@ -29,8 +38,9 @@ class MemoryBucket implements R2Bucket {
       key,
       size: entry.data.byteLength,
       uploaded: new Date(0),
-      httpEtag: '"etag"',
+      httpEtag: `"${createHash("md5").update(entry.data).digest("hex")}"`,
       httpMetadata: { contentType: entry.contentType },
+      customMetadata: entry.customMetadata,
       body: new Response(entry.data.slice().buffer).body as ReadableStream,
       arrayBuffer: async () => entry.data.buffer as ArrayBuffer,
     };
@@ -40,7 +50,21 @@ class MemoryBucket implements R2Bucket {
     key: string,
     value: ArrayBuffer | ReadableStream | string,
     options?: R2PutOptions,
-  ): Promise<R2Object> {
+  ): Promise<R2Object | null> {
+    const onlyIf = options?.onlyIf;
+    const ifMatch =
+      onlyIf instanceof Headers
+        ? onlyIf.get("if-match")
+        : onlyIf?.etagMatches === undefined
+          ? undefined
+          : `"${onlyIf.etagMatches}"`;
+    const ifNone =
+      onlyIf instanceof Headers
+        ? onlyIf.get("if-none-match")
+        : onlyIf?.etagDoesNotMatch;
+    if (ifMatch != null && (await this.get(key))?.httpEtag !== ifMatch)
+      return null;
+    if (ifNone === "*" && this.store.has(key)) return null;
     let data: Uint8Array;
     if (typeof value === "string") data = new TextEncoder().encode(value);
     else if (value instanceof ArrayBuffer) data = new Uint8Array(value);
@@ -49,6 +73,7 @@ class MemoryBucket implements R2Bucket {
       data,
       contentType:
         options?.httpMetadata?.contentType ?? "application/octet-stream",
+      customMetadata: options?.customMetadata,
     });
     return (await this.get(key)) as R2Object;
   }
@@ -61,13 +86,28 @@ class MemoryBucket implements R2Bucket {
 
   async list(options: R2ListOptions = {}): Promise<R2Objects> {
     const prefix = options.prefix ?? "";
-    const objects = await Promise.all(
-      [...this.store.keys()]
-        .filter((key) => key.startsWith(prefix))
-        .sort()
-        .map((key) => this.get(key) as Promise<R2Object>),
+    const offset = options.cursor ? Number(options.cursor) : 0;
+    const keys = [...this.store.keys()]
+      .filter((key) => key.startsWith(prefix))
+      .sort();
+    const page = keys.slice(
+      offset,
+      offset + Math.min(options.limit ?? 1000, this.pageSize),
     );
-    return { objects, truncated: false };
+    const objects = await Promise.all(
+      page.map(async (key) => {
+        const object = (await this.get(key))!;
+        if (!options.include?.includes("customMetadata"))
+          delete object.customMetadata;
+        return object;
+      }),
+    );
+    const next = offset + page.length;
+    return {
+      objects,
+      truncated: next < keys.length,
+      ...(next < keys.length ? { cursor: String(next) } : {}),
+    };
   }
 }
 
@@ -115,11 +155,16 @@ const worker = createStorageWorker(async (_input, init) => {
 function request(
   method: string,
   path: string,
-  opts: { token?: string; body?: string } = {},
+  opts: {
+    token?: string;
+    body?: string;
+    headers?: Record<string, string>;
+  } = {},
 ): Request {
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { ...opts.headers };
   if (opts.token) headers.authorization = `Bearer ${opts.token}`;
-  if (opts.body !== undefined) headers["content-type"] = "text/plain";
+  if (opts.body !== undefined && headers["content-type"] === undefined)
+    headers["content-type"] = "text/plain";
   return new Request(`https://storage.example${path}`, {
     method,
     headers,
@@ -176,6 +221,235 @@ describe("takos-storage Interface OAuth worker", () => {
     );
     expect(get.status).toBe(200);
     expect(await get.text()).toBe("hello");
+  });
+
+  test("rejects a stale object deletion without losing the current bytes", async () => {
+    const env = makeEnv(new MemoryBucket());
+    await worker.fetch(
+      request("PUT", "/o/note.txt", { token: TOKENS.write, body: "original" }),
+      env,
+    );
+    const original = await worker.fetch(
+      request("GET", "/o/note.txt", { token: TOKENS.read }),
+      env,
+    );
+    const etag = original.headers.get("etag")!;
+    expect(
+      (
+        await worker.fetch(
+          request("PUT", "/o/note.txt", {
+            token: TOKENS.write,
+            body: "current",
+            headers: { "if-match": etag },
+          }),
+          env,
+        )
+      ).status,
+    ).toBe(201);
+    const stale = await worker.fetch(
+      request("DELETE", "/o/note.txt", {
+        token: TOKENS.delete,
+        headers: { "if-match": etag },
+      }),
+      env,
+    );
+    expect(stale.status).toBe(412);
+    const current = await worker.fetch(
+      request("GET", "/o/note.txt", { token: TOKENS.read }),
+      env,
+    );
+    expect(current.status).toBe(200);
+    expect(await current.text()).toBe("current");
+    const deleted = await worker.fetch(
+      request("DELETE", "/o/note.txt", {
+        token: TOKENS.delete,
+        headers: { "if-match": current.headers.get("etag")! },
+      }),
+      env,
+    );
+    expect(deleted.status).toBe(200);
+    expect(
+      (
+        await worker.fetch(
+          request("GET", "/o/note.txt", { token: TOKENS.read }),
+          env,
+        )
+      ).status,
+    ).toBe(404);
+  });
+
+  test("defaults PUT to create-only and refuses invalid mutation conditions", async () => {
+    const env = makeEnv(new MemoryBucket());
+    await worker.fetch(
+      request("PUT", "/o/note.txt", { token: TOKENS.write, body: "original" }),
+      env,
+    );
+    const etag = (
+      await worker.fetch(
+        request("HEAD", "/o/note.txt", { token: TOKENS.read }),
+        env,
+      )
+    ).headers.get("etag")!;
+    expect(
+      (
+        await worker.fetch(
+          request("PUT", "/o/note.txt", {
+            token: TOKENS.write,
+            body: "unconditional",
+          }),
+          env,
+        )
+      ).status,
+    ).toBe(412);
+    expect(
+      (
+        await worker.fetch(
+          request("DELETE", "/o/note.txt", { token: TOKENS.delete }),
+          env,
+        )
+      ).status,
+    ).toBe(428);
+    for (const value of [
+      "*",
+      "bare",
+      'W/"weak"',
+      '"one","two"',
+      '"' + "x".repeat(256) + '"',
+    ]) {
+      for (const method of ["PUT", "DELETE"] as const) {
+        const invalid = await worker.fetch(
+          request(method, "/o/note.txt", {
+            token: method === "PUT" ? TOKENS.write : TOKENS.delete,
+            ...(method === "PUT" ? { body: "bad" } : {}),
+            headers: { "if-match": value },
+          }),
+          env,
+        );
+        expect(invalid.status).toBe(400);
+      }
+    }
+    expect(
+      (
+        await worker.fetch(
+          request("PUT", "/o/note.txt", {
+            token: TOKENS.write,
+            body: "bad",
+            headers: { "if-match": etag, "if-none-match": "*" },
+          }),
+          env,
+        )
+      ).status,
+    ).toBe(400);
+    expect(
+      await (
+        await worker.fetch(
+          request("GET", "/o/note.txt", { token: TOKENS.read }),
+          env,
+        )
+      ).text(),
+    ).toBe("original");
+  });
+
+  test.each([
+    ["application/json", '{"safe":true}'],
+    ["text/html", "<script>untrusted()</script>"],
+    [
+      "image/svg+xml",
+      '<svg xmlns="http://www.w3.org/2000/svg"><script>untrusted()</script></svg>',
+    ],
+  ])(
+    "keeps %s bytes and media type in an inert attachment",
+    async (contentType, body) => {
+      const env = makeEnv(new MemoryBucket());
+      await worker.fetch(
+        request("PUT", "/o/file", {
+          token: TOKENS.write,
+          body,
+          headers: { "content-type": contentType },
+        }),
+        env,
+      );
+      for (const method of ["GET", "HEAD"]) {
+        const response = await worker.fetch(
+          request(method, "/o/file", { token: TOKENS.read }),
+          env,
+        );
+        expect(response.status).toBe(200);
+        expect(response.headers.get("content-type")).toBe(contentType);
+        expect(response.headers.get("content-disposition")).toBe("attachment");
+        expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+        expect(response.headers.get("content-security-policy")).toBe(
+          "default-src 'none'; sandbox",
+        );
+        if (method === "GET") expect(await response.text()).toBe(body);
+      }
+    },
+  );
+
+  test("hides residual deletion markers and preserves the underlying list cursor", async () => {
+    class CleanupFailureBucket extends MemoryBucket {
+      override async delete(): Promise<void> {
+        throw new Error("synthetic cleanup failure");
+      }
+    }
+    const bucket = new CleanupFailureBucket(),
+      env = makeEnv(bucket);
+    bucket.pageSize = 1;
+    for (const path of ["a.txt", "z.txt"])
+      await worker.fetch(
+        request("PUT", "/o/" + path, { token: TOKENS.write, body: "" }),
+        env,
+      );
+    const etag = (
+      await worker.fetch(
+        request("HEAD", "/o/a.txt", { token: TOKENS.read }),
+        env,
+      )
+    ).headers.get("etag")!;
+    await expect(
+      worker.fetch(
+        request("DELETE", "/o/a.txt", {
+          token: TOKENS.delete,
+          headers: { "if-match": etag },
+        }),
+        env,
+      ),
+    ).rejects.toThrow("synthetic cleanup failure");
+    for (const method of ["GET", "HEAD"])
+      expect(
+        (
+          await worker.fetch(
+            request(method, "/o/a.txt", { token: TOKENS.read }),
+            env,
+          )
+        ).status,
+      ).toBe(404);
+    const first = (await (
+      await worker.fetch(request("GET", "/o", { token: TOKENS.list }), env)
+    ).json()) as { objects: unknown[]; truncated: boolean; cursor: string };
+    expect(first).toEqual({ objects: [], truncated: true, cursor: "1" });
+    const next = (await (
+      await worker.fetch(
+        request("GET", "/o?cursor=" + first.cursor, { token: TOKENS.list }),
+        env,
+      )
+    ).json()) as { objects: Array<{ key: string }> };
+    expect(next.objects.map((x) => x.key)).toEqual(["z.txt"]);
+    for (const headers of [{}, { "if-match": etag }] as Array<
+      Record<string, string>
+    >)
+      expect(
+        (
+          await worker.fetch(
+            request("PUT", "/o/a.txt", {
+              token: TOKENS.write,
+              body: "late",
+              headers,
+            }),
+            env,
+          )
+        ).status,
+      ).toBe(412);
   });
 
   test("requires one exact permission and exact owner evidence", async () => {

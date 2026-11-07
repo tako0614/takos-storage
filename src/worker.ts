@@ -10,7 +10,13 @@
 import type { Env } from "./types.ts";
 import { storageConsoleHtml } from "./console.ts";
 import { handleAuthRoute } from "./app-auth.ts";
-import { handleDriveRoute } from "./drive.ts";
+import { handleDriveRoute, writePrecondition } from "./drive.ts";
+import {
+  deleteStoredObject,
+  DriveOperationError,
+  exactContentEtag,
+  isDriveDeletionTombstone,
+} from "./drive-operations.ts";
 import { handleMcpRoute } from "./mcp.ts";
 import {
   authorizeInterfaceOAuthBearer,
@@ -20,7 +26,7 @@ import iconSvg from "../public/icons/takos-storage.svg" with { type: "text" };
 import { webAppAssetResponse } from "./web-app.ts";
 import {
   boundedRequestBody,
-  conditionalWriteHeaders,
+  storedContentType,
   RequestBodyTooLargeError,
 } from "./http-body.ts";
 import { physicalObjectKeyFits } from "./storage-key.ts";
@@ -199,14 +205,17 @@ async function fetchHandler(
     const listing = await env.BUCKET.list({
       prefix: `${storagePrefix}${requested}`,
       limit: 1000,
+      include: ["customMetadata"],
       ...(cursor ? { cursor } : {}),
     });
     return json({
-      objects: listing.objects.map((object) => ({
-        key: object.key.slice(storagePrefix.length),
-        size: object.size,
-        uploaded: object.uploaded,
-      })),
+      objects: listing.objects
+        .filter((object) => !isDriveDeletionTombstone(object))
+        .map((object) => ({
+          key: object.key.slice(storagePrefix.length),
+          size: object.size,
+          uploaded: object.uploaded,
+        })),
       truncated: listing.truncated,
       ...(listing.truncated && listing.cursor
         ? { cursor: listing.cursor }
@@ -226,10 +235,14 @@ async function fetchHandler(
 
   if (expectedPermission === "storage.object.read") {
     const object = await env.BUCKET.get(physicalKey);
-    if (!object) return json({ error: "not_found" }, 404);
+    if (!object || isDriveDeletionTombstone(object))
+      return json({ error: "not_found" }, 404);
     const headers = new Headers({
-      "content-type":
-        object.httpMetadata?.contentType ?? "application/octet-stream",
+      "content-type": storedContentType(object.httpMetadata?.contentType),
+      "content-disposition": "attachment",
+      "content-security-policy": "default-src 'none'; sandbox",
+      "x-content-type-options": "nosniff",
+      "referrer-policy": "no-referrer",
     });
     if (object.httpEtag) headers.set("etag", object.httpEtag);
     if (request.method === "HEAD") {
@@ -239,15 +252,17 @@ async function fetchHandler(
   }
 
   if (expectedPermission === "storage.object.write") {
-    const contentType =
-      request.headers.get("content-type") ?? "application/octet-stream";
+    const precondition = writePrecondition(request, {
+      createOnlyByDefault: true,
+    });
+    if ("response" in precondition) return precondition.response;
+    const contentType = storedContentType(request.headers.get("content-type"));
     const body = await boundedRequestBody(request);
     if (!body.ok) return json({ error: body.error }, body.status);
-    const onlyIf = conditionalWriteHeaders(request);
     try {
       const object = await env.BUCKET.put(physicalKey, body.body, {
         httpMetadata: { contentType },
-        ...(onlyIf ? { onlyIf } : {}),
+        onlyIf: precondition.onlyIf,
       });
       if (!object) return json({ error: "precondition_failed" }, 412);
       return json({ ok: true, key }, 201);
@@ -261,7 +276,21 @@ async function fetchHandler(
     }
   }
 
-  await env.BUCKET.delete(physicalKey);
+  if (!request.headers.has("if-match"))
+    return json({ error: "if_match_required" }, 428);
+  const etag = exactContentEtag(request.headers.get("if-match"));
+  if (etag === null) return json({ error: "invalid_if_match" }, 400);
+  try {
+    await deleteStoredObject(env.BUCKET, physicalKey, etag);
+  } catch (error) {
+    if (
+      error instanceof DriveOperationError &&
+      error.code === "revision_conflict"
+    ) {
+      return json({ error: "precondition_failed" }, 412);
+    }
+    throw error;
+  }
   return json({ ok: true, key });
 }
 

@@ -136,16 +136,3 @@ async function readBoundedBuffer(
   }
   return { ok: true, body: bytes.buffer, dispose: async () => {} };
 }
-
-export function conditionalWriteHeaders(request: Request): Headers | undefined {
-  const headers = new Headers();
-  let hasPrecondition = false;
-  for (const name of ["if-match", "if-none-match"] as const) {
-    const value = request.headers.get(name);
-    if (value !== null) {
-      headers.set(name, value);
-      hasPrecondition = true;
-    }
-  }
-  return hasPrecondition ? headers : undefined;
-}

@@ -50,6 +50,17 @@ direct/self-host の `/mcp` だけは、operator が `published_mcp_auth_token` 
 | DELETE     | `/o/<key>`      | `storage.object.delete`                                |
 | GET        | `/o?prefix=<p>` | `storage.object.list`                                  |
 
+`PUT /o/<key>` は条件を省略すると新規作成専用です。既存objectの更新はGET/HEADで得た
+strong quoted `ETag` を `If-Match` に指定し、明示作成には `If-None-Match: *` を使います。
+両条件の同時指定・不正形式は400、条件不一致は412です。`DELETE` は同じ `If-Match` が必須で、
+未指定428・不正形式400・不一致412になります。従来の無条件上書き・削除callerは条件を配送してください。
+OfficeのJSON fetchのため正当なmedia typeとbytesは保持し、GET/HEADにattachment、nosniff、
+sandbox/default-src-none CSPを付けます。これは配備先browserでの検証を代替しません。
+
+object APIもDrive/MCPと同じ論理削除markerを使います。物理cleanup失敗は成功ACKにせず、
+残留markerはGET/HEAD/listに表示しません。旧ETag更新と新規作成を拒否し、operator repairが必要です。
+ETagのcontent/metadata/ABAの限界は下記MCPと同じです。InterfaceBindingごとの保存先とoperation権限は変わりません。
+
 ## MCP file operations
 
 MCP の6つの file tool はブラウザー Drive と同じ `drive/` 領域を使います。

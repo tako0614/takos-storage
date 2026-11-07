@@ -3,6 +3,14 @@ import type { R2Bucket, R2Object } from "./types.ts";
 export const DRIVE_PREFIX = "drive/";
 const DELETION_MARKER = "takos-storage-deleting";
 
+export function exactContentEtag(value: unknown): string | null {
+  return typeof value === "string" &&
+    value.length <= 256 &&
+    /^"[\x21\x23-\x7e]+"$/u.test(value)
+    ? value
+    : null;
+}
+
 export function isDriveDeletionTombstone(
   object: Pick<R2Object, "customMetadata">,
 ): boolean {
@@ -51,7 +59,15 @@ export async function deleteDriveObject(
   path: string,
   expectedEtag: string,
 ): Promise<void> {
-  const key = driveKey(path);
+  return deleteStoredObject(bucket, driveKey(path), expectedEtag);
+}
+
+/** The caller owns authorization and physical-key namespace validation. */
+export async function deleteStoredObject(
+  bucket: R2Bucket,
+  key: string,
+  expectedEtag: string,
+): Promise<void> {
   // R2 validators identify content, not metadata. An empty marker retains an
   // empty file's ETag and admits a stale writer before physical removal.
   // Fresh marker content makes the logical delete change that validator too.
@@ -63,7 +79,7 @@ export async function deleteDriveObject(
   if (!tombstone) {
     throw new DriveOperationError(
       "revision_conflict",
-      `file changed before deletion: ${path}`,
+      "object content changed before deletion",
     );
   }
   await bucket.delete(key);

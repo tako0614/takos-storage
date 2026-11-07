@@ -14,6 +14,7 @@ import {
   deleteDriveObject,
   DRIVE_PREFIX,
   DriveOperationError,
+  exactContentEtag,
   getDriveObject as readDriveObject,
   isDriveDeletionTombstone,
   moveDriveObject,
@@ -107,16 +108,13 @@ function expectedEtag(
 ): string | undefined {
   const value = args[name];
   if (value === undefined && !required) return undefined;
-  if (
-    typeof value !== "string" ||
-    value.length > 256 ||
-    !/^"[\x21\x23-\x7e]+"$/u.test(value)
-  ) {
+  const etag = exactContentEtag(value);
+  if (etag === null) {
     throw new ToolInputError(
       `${name} must be one strong quoted ETag from a file read or info call`,
     );
   }
-  return value;
+  return etag;
 }
 
 function filePath(
