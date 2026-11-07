@@ -11,13 +11,20 @@
 
 import type { Env, R2Object } from "./types.ts";
 import {
+  deleteDriveObject,
+  DRIVE_PREFIX,
+  DriveOperationError,
+  getDriveObject as readDriveObject,
+  isDriveDeletionTombstone,
+  moveDriveObject,
+} from "./drive-operations.ts";
+import {
   hasValidInterfaceOAuthConfiguration,
   verifyInterfaceOAuthBearer,
 } from "./interface-oauth-auth.ts";
 
 export const MAX_STORAGE_FILE_BYTES = 50 * 1024 * 1024;
 const MAX_MCP_REQUEST_BYTES = 70 * 1024 * 1024;
-const DRIVE_PREFIX = "drive/";
 const MAX_PATH_BYTES = 1024;
 const MAX_CURSOR_LENGTH = 4096;
 const DEFAULT_LIST_LIMIT = 100;
@@ -89,6 +96,25 @@ function optionalString(args: JsonRecord, name: string): string | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "string") {
     throw new ToolInputError(`${name} must be a string`);
+  }
+  return value;
+}
+
+function expectedEtag(
+  args: JsonRecord,
+  name: string,
+  required = false,
+): string | undefined {
+  const value = args[name];
+  if (value === undefined && !required) return undefined;
+  if (
+    typeof value !== "string" ||
+    value.length > 256 ||
+    !/^"[\x21\x23-\x7e]+"$/u.test(value)
+  ) {
+    throw new ToolInputError(
+      `${name} must be one strong quoted ETag from a file read or info call`,
+    );
   }
   return value;
 }
@@ -247,9 +273,7 @@ function objectMetadata(object: R2Object, path: string): JsonRecord {
 }
 
 async function getDriveObject(env: Env, path: string): Promise<R2Object> {
-  const object = await env.BUCKET.get(DRIVE_PREFIX + path);
-  if (!object) throw new ToolInputError(`file not found: ${path}`);
-  return object;
+  return readDriveObject(env.BUCKET, path);
 }
 
 const READ_ONLY: ToolAnnotations = {
@@ -311,11 +335,16 @@ const tools: ToolDefinition[] = [
       const listing = await env.BUCKET.list({
         prefix: DRIVE_PREFIX + prefix,
         limit: rawLimit,
+        include: ["customMetadata"],
         ...(cursor ? { cursor } : {}),
       });
       return {
         files: listing.objects
-          .filter((object) => object.key.startsWith(DRIVE_PREFIX))
+          .filter(
+            (object) =>
+              object.key.startsWith(DRIVE_PREFIX) &&
+              !isDriveDeletionTombstone(object),
+          )
           .map((object) => ({
             path: object.key.slice(DRIVE_PREFIX.length),
             size: object.size,
@@ -372,7 +401,7 @@ const tools: ToolDefinition[] = [
   {
     name: "storage_file_write",
     description:
-      "Create or replace a user file in Takos Storage. The maximum decoded size is 50 MiB.",
+      "Create a user file, or replace the exact content ETag observed by a read/info call. Omit expected_etag for create-only. The maximum decoded size is 50 MiB.",
     inputSchema: {
       type: "object",
       properties: {
@@ -390,6 +419,11 @@ const tools: ToolDefinition[] = [
           type: "string",
           description: "Optional media type to store.",
         },
+        expected_etag: {
+          type: "string",
+          description:
+            "Exact quoted content ETag from a read/info call. Omit to create only; required to replace an existing file.",
+        },
       },
       required: ["path", "content"],
       additionalProperties: false,
@@ -405,14 +439,29 @@ const tools: ToolDefinition[] = [
       const encoding = encodingArg(args);
       const bytes = contentBytes(args, encoding);
       const contentType = contentTypeArg(args, encoding);
-      await env.BUCKET.put(DRIVE_PREFIX + path, bytes.buffer as ArrayBuffer, {
-        httpMetadata: { contentType },
-      });
+      const etag = expectedEtag(args, "expected_etag");
+      const onlyIf = new Headers(
+        etag === undefined ? { "if-none-match": "*" } : { "if-match": etag },
+      );
+      const written = await env.BUCKET.put(
+        DRIVE_PREFIX + path,
+        bytes.buffer as ArrayBuffer,
+        {
+          httpMetadata: { contentType },
+          onlyIf,
+        },
+      );
+      if (!written) {
+        throw new ToolInputError(
+          "file already exists or its ETag changed; read it before retrying",
+        );
+      }
       return {
         ok: true,
         path,
         size: bytes.byteLength,
         content_type: contentType,
+        etag: written.httpEtag ?? null,
       };
     },
   },
@@ -435,13 +484,18 @@ const tools: ToolDefinition[] = [
   },
   {
     name: "storage_file_delete",
-    description: "Delete a user file from Takos Storage.",
+    description:
+      "Delete the exact file content ETag observed by a read/info call.",
     inputSchema: {
       type: "object",
       properties: {
         path: { type: "string", description: "Drive-relative file path." },
+        expected_etag: {
+          type: "string",
+          description: "Exact quoted content ETag from a read/info call.",
+        },
       },
-      required: ["path"],
+      required: ["path", "expected_etag"],
       additionalProperties: false,
     },
     annotations: {
@@ -452,15 +506,15 @@ const tools: ToolDefinition[] = [
     },
     handle: async (args, env) => {
       const path = requiredFilePath(args, "path");
-      await getDriveObject(env, path);
-      await env.BUCKET.delete(DRIVE_PREFIX + path);
+      const etag = expectedEtag(args, "expected_etag", true)!;
+      await deleteDriveObject(env.BUCKET, path, etag);
       return { ok: true, path };
     },
   },
   {
     name: "storage_file_move",
     description:
-      "Move a user file within Takos Storage. Existing destinations are preserved unless overwrite is true.",
+      "Move an observed file content ETag. Destinations are create-only unless overwrite=true and an expected_destination_etag is supplied. A partial failure requires reading both paths before retrying.",
     inputSchema: {
       type: "object",
       properties: {
@@ -472,12 +526,31 @@ const tools: ToolDefinition[] = [
           type: "string",
           description: "New drive-relative file path.",
         },
+        expected_source_etag: {
+          type: "string",
+          description:
+            "Exact quoted source content ETag from a read/info call.",
+        },
         overwrite: {
           type: "boolean",
           description: "Replace an existing destination. Default: false.",
         },
+        expected_destination_etag: {
+          type: "string",
+          description:
+            "Exact quoted destination content ETag; required only with overwrite=true.",
+        },
       },
-      required: ["source_path", "destination_path"],
+      required: ["source_path", "destination_path", "expected_source_etag"],
+      allOf: [
+        {
+          if: {
+            properties: { overwrite: { const: true } },
+            required: ["overwrite"],
+          },
+          then: { required: ["expected_destination_etag"] },
+        },
+      ],
       additionalProperties: false,
     },
     annotations: {
@@ -498,36 +571,30 @@ const tools: ToolDefinition[] = [
       if (typeof overwrite !== "boolean") {
         throw new ToolInputError("overwrite must be a boolean");
       }
-      const source = await getDriveObject(env, sourcePath);
-      if (source.size > MAX_STORAGE_FILE_BYTES) {
-        throw new ToolInputError("file exceeds the 50 MiB limit");
-      }
-      const buffer = await source.arrayBuffer();
-      if (buffer.byteLength > MAX_STORAGE_FILE_BYTES) {
-        throw new ToolInputError("file exceeds the 50 MiB limit");
-      }
-      const written = await env.BUCKET.put(
-        DRIVE_PREFIX + destinationPath,
-        buffer,
-        {
-          httpMetadata: {
-            contentType:
-              source.httpMetadata?.contentType ?? "application/octet-stream",
-          },
-          ...(!overwrite ? { onlyIf: { etagDoesNotMatch: "*" } } : {}),
-        },
+      const sourceEtag = expectedEtag(args, "expected_source_etag", true)!;
+      const destinationEtag = expectedEtag(
+        args,
+        "expected_destination_etag",
+        overwrite,
       );
-      if (!written) {
+      if (!overwrite && destinationEtag !== undefined) {
         throw new ToolInputError(
-          `destination already exists: ${destinationPath}`,
+          "expected_destination_etag requires overwrite=true",
         );
       }
-      await env.BUCKET.delete(DRIVE_PREFIX + sourcePath);
+      const moved = await moveDriveObject(
+        env.BUCKET,
+        sourcePath,
+        destinationPath,
+        sourceEtag,
+        MAX_STORAGE_FILE_BYTES,
+        overwrite ? { expectedDestinationEtag: destinationEtag! } : undefined,
+      );
       return {
         ok: true,
         source_path: sourcePath,
         destination_path: destinationPath,
-        size: buffer.byteLength,
+        size: moved.size,
       };
     },
   },
@@ -713,6 +780,9 @@ export async function handleMcpRoute(
   try {
     return jsonRpcResult(id, toolResult(await tool.handle(args, env)));
   } catch (error) {
+    if (error instanceof DriveOperationError) {
+      return jsonRpcResult(id, toolError(`${error.code}: ${error.message}`));
+    }
     if (error instanceof ToolInputError) {
       return jsonRpcResult(id, toolError(error.message));
     }

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 
 import { MAX_STORAGE_FILE_BYTES } from "./mcp.ts";
 import worker, { createStorageWorker } from "./worker.ts";
@@ -17,6 +18,7 @@ type StoredObject = {
   data: Uint8Array;
   contentType: string;
   reportedSize?: number;
+  customMetadata?: Record<string, string>;
 };
 
 class MemoryBucket implements R2Bucket {
@@ -30,8 +32,9 @@ class MemoryBucket implements R2Bucket {
       key,
       size: entry.reportedSize ?? entry.data.byteLength,
       uploaded: new Date("2026-01-02T03:04:05.000Z"),
-      httpEtag: '"mcp-etag"',
+      httpEtag: `"${createHash("md5").update(entry.data).digest("hex")}"`,
       httpMetadata: { contentType: entry.contentType },
+      customMetadata: entry.customMetadata,
       body: new Response(entry.data.slice()).body as ReadableStream,
       arrayBuffer: async () => {
         this.arrayBufferReads += 1;
@@ -46,6 +49,21 @@ class MemoryBucket implements R2Bucket {
     options?: R2PutOptions,
   ): Promise<R2Object | null> {
     const onlyIf = options?.onlyIf;
+    if (!(onlyIf instanceof Headers) && onlyIf?.etagMatches?.startsWith('"')) {
+      throw new TypeError("Conditional ETag should not be wrapped in quotes");
+    }
+    const etagMatches =
+      onlyIf instanceof Headers
+        ? onlyIf.get("if-match")
+        : onlyIf?.etagMatches === undefined
+          ? undefined
+          : `"${onlyIf.etagMatches}"`;
+    if (
+      etagMatches != null &&
+      (await this.get(key))?.httpEtag !== etagMatches
+    ) {
+      return null;
+    }
     const etagDoesNotMatch =
       onlyIf instanceof Headers
         ? onlyIf.get("if-none-match")
@@ -62,12 +80,15 @@ class MemoryBucket implements R2Bucket {
       data,
       contentType:
         options?.httpMetadata?.contentType ?? "application/octet-stream",
+      customMetadata: options?.customMetadata,
     });
     return (await this.get(key)) as R2Object;
   }
 
-  async delete(key: string): Promise<void> {
-    this.store.delete(key);
+  async delete(keys: string | string[]): Promise<void> {
+    for (const key of typeof keys === "string" ? [keys] : keys) {
+      this.store.delete(key);
+    }
   }
 
   async list(options: R2ListOptions = {}): Promise<R2Objects> {
@@ -79,7 +100,13 @@ class MemoryBucket implements R2Bucket {
       .sort();
     const keys = matching.slice(offset, offset + limit);
     const objects = await Promise.all(
-      keys.map((key) => this.get(key) as Promise<R2Object>),
+      keys.map(async (key) => {
+        const object = (await this.get(key))!;
+        if (!options.include?.includes("customMetadata")) {
+          delete object.customMetadata;
+        }
+        return object;
+      }),
     );
     const nextOffset = offset + keys.length;
     return {
@@ -209,6 +236,20 @@ describe("published storage MCP", () => {
       (rpc.result.tools[4].annotations as Record<string, unknown>)
         .destructiveHint,
     ).toBe(true);
+    const writeSchema = rpc.result.tools[2].inputSchema as {
+      properties: Record<string, unknown>;
+    };
+    const deleteSchema = rpc.result.tools[4].inputSchema as {
+      required: string[];
+    };
+    const moveSchema = rpc.result.tools[5].inputSchema as {
+      properties: Record<string, unknown>;
+      required: string[];
+    };
+    expect(writeSchema.properties.expected_etag).toBeObject();
+    expect(deleteSchema.required).toContain("expected_etag");
+    expect(moveSchema.required).toContain("expected_source_etag");
+    expect(moveSchema.properties.expected_destination_etag).toBeObject();
   });
 
   test("initializes as a stateless Streamable HTTP server", async () => {
@@ -277,6 +318,151 @@ describe("published storage MCP", () => {
     expect(empty.content).toBe("");
   });
 
+  test("creates by default and updates only the file's observed ETag", async () => {
+    const bucket = new MemoryBucket();
+    await callTool(bucket, "storage_file_write", {
+      path: "note.txt",
+      content: "original",
+    });
+    const original = structured(
+      await callTool(bucket, "storage_file_read", { path: "note.txt" }),
+    );
+    const duplicate = await callTool(bucket, "storage_file_write", {
+      path: "note.txt",
+      content: "unconditional replacement",
+    });
+    expect((duplicate.result as Record<string, unknown>).isError).toBe(true);
+    expect(
+      structured(
+        await callTool(bucket, "storage_file_read", { path: "note.txt" }),
+      ).content,
+    ).toBe("original");
+
+    const updated = await callTool(bucket, "storage_file_write", {
+      path: "note.txt",
+      content: "current",
+      expected_etag: original.etag,
+    });
+    expect((updated.result as Record<string, unknown>).isError).not.toBe(true);
+    const stale = await callTool(bucket, "storage_file_write", {
+      path: "note.txt",
+      content: "stale replacement",
+      expected_etag: original.etag,
+    });
+    expect((stale.result as Record<string, unknown>).isError).toBe(true);
+    expect(
+      structured(
+        await callTool(bucket, "storage_file_read", { path: "note.txt" }),
+      ).content,
+    ).toBe("current");
+  });
+
+  test("deletes only the file's current observed ETag", async () => {
+    const bucket = new MemoryBucket();
+    const written = structured(
+      await callTool(bucket, "storage_file_write", {
+        path: "note.txt",
+        content: "original",
+      }),
+    );
+    const missing = await callTool(bucket, "storage_file_delete", {
+      path: "note.txt",
+    });
+    expect((missing.result as Record<string, unknown>).isError).toBe(true);
+    await callTool(bucket, "storage_file_write", {
+      path: "note.txt",
+      content: "current",
+      expected_etag: written.etag,
+    });
+    const stale = await callTool(bucket, "storage_file_delete", {
+      path: "note.txt",
+      expected_etag: written.etag,
+    });
+    expect((stale.result as Record<string, unknown>).isError).toBe(true);
+    const current = structured(
+      await callTool(bucket, "storage_file_read", { path: "note.txt" }),
+    );
+    expect(current.content).toBe("current");
+    const removed = await callTool(bucket, "storage_file_delete", {
+      path: "note.txt",
+      expected_etag: current.etag,
+    });
+    expect((removed.result as Record<string, unknown>).isError).not.toBe(true);
+    const missingAfter = await callTool(bucket, "storage_file_read", {
+      path: "note.txt",
+    });
+    expect((missingAfter.result as Record<string, unknown>).isError).toBe(true);
+  });
+
+  test("requires observed source and destination ETags for overwriting moves", async () => {
+    const bucket = new MemoryBucket();
+    const source = structured(
+      await callTool(bucket, "storage_file_write", {
+        path: "source.txt",
+        content: "source",
+      }),
+    );
+    const destination = structured(
+      await callTool(bucket, "storage_file_write", {
+        path: "destination.txt",
+        content: "destination",
+      }),
+    );
+    for (const args of [
+      { expected_destination_etag: destination.etag },
+      { expected_source_etag: source.etag },
+      {
+        expected_source_etag: source.etag,
+        expected_destination_etag: '"stale"',
+      },
+      {
+        expected_source_etag: '"stale"',
+        expected_destination_etag: destination.etag,
+      },
+    ]) {
+      const refused = await callTool(bucket, "storage_file_move", {
+        source_path: "source.txt",
+        destination_path: "destination.txt",
+        overwrite: true,
+        ...args,
+      });
+      expect((refused.result as Record<string, unknown>).isError).toBe(true);
+      expect(
+        structured(
+          await callTool(bucket, "storage_file_read", { path: "source.txt" }),
+        ).content,
+      ).toBe("source");
+      expect(
+        structured(
+          await callTool(bucket, "storage_file_read", {
+            path: "destination.txt",
+          }),
+        ).content,
+      ).toBe("destination");
+    }
+    const moved = await callTool(bucket, "storage_file_move", {
+      source_path: "source.txt",
+      destination_path: "destination.txt",
+      overwrite: true,
+      expected_source_etag: source.etag,
+      expected_destination_etag: destination.etag,
+    });
+    expect((moved.result as Record<string, unknown>).isError).not.toBe(true);
+    expect(
+      structured(
+        await callTool(bucket, "storage_file_read", {
+          path: "destination.txt",
+        }),
+      ).content,
+    ).toBe("source");
+    expect(
+      (
+        (await callTool(bucket, "storage_file_read", { path: "source.txt" }))
+          .result as Record<string, unknown>
+      ).isError,
+    ).toBe(true);
+  });
+
   test("rejects traversal and never exposes app-owned object API keys", async () => {
     const bucket = new MemoryBucket();
     await bucket.put("workspace/app/secret.txt", "secret");
@@ -329,6 +515,7 @@ describe("published storage MCP", () => {
     const refused = await callTool(bucket, "storage_file_move", {
       source_path: "source.txt",
       destination_path: "existing.txt",
+      expected_source_etag: info.etag,
     });
     expect((refused.result as Record<string, unknown>).isError).toBe(true);
     expect(bucket.store.has("drive/source.txt")).toBe(true);
@@ -339,14 +526,235 @@ describe("published storage MCP", () => {
     await callTool(bucket, "storage_file_move", {
       source_path: "source.txt",
       destination_path: "moved.txt",
+      expected_source_etag: info.etag,
     });
     expect(bucket.store.has("drive/source.txt")).toBe(false);
     expect(bucket.store.get("drive/moved.txt")?.contentType).toBe(
       "text/custom",
     );
 
-    await callTool(bucket, "storage_file_delete", { path: "moved.txt" });
+    const movedInfo = structured(
+      await callTool(bucket, "storage_file_info", { path: "moved.txt" }),
+    );
+    await callTool(bucket, "storage_file_delete", {
+      path: "moved.txt",
+      expected_etag: movedInfo.etag,
+    });
     expect(bucket.store.has("drive/moved.txt")).toBe(false);
+  });
+
+  test("hides a failed deletion marker across paginated MCP reads and listings", async () => {
+    class CleanupFailureBucket extends MemoryBucket {
+      override async delete(): Promise<void> {
+        throw new Error("synthetic cleanup failure");
+      }
+    }
+    const bucket = new CleanupFailureBucket();
+    const original = structured(
+      await callTool(bucket, "storage_file_write", {
+        path: "a.txt",
+        content: "",
+      }),
+    );
+    await callTool(bucket, "storage_file_write", {
+      path: "z.txt",
+      content: "kept",
+    });
+    const deletion = await callTool(bucket, "storage_file_delete", {
+      path: "a.txt",
+      expected_etag: original.etag,
+    });
+    expect((deletion.error as Record<string, unknown>).code).toBe(-32603);
+    for (const name of ["storage_file_read", "storage_file_info"]) {
+      const missing = await callTool(bucket, name, { path: "a.txt" });
+      expect((missing.result as Record<string, unknown>).isError).toBe(true);
+    }
+    const first = structured(
+      await callTool(bucket, "storage_file_list", { limit: 1 }),
+    );
+    expect(first.files).toEqual([]);
+    expect(first.truncated).toBe(true);
+    expect(first.next_cursor).toBe("1");
+    const second = structured(
+      await callTool(bucket, "storage_file_list", {
+        limit: 1,
+        cursor: first.next_cursor,
+      }),
+    );
+    expect(
+      (second.files as Array<{ path: string }>).map((file) => file.path),
+    ).toEqual(["z.txt"]);
+    for (const args of [{}, { expected_etag: original.etag }]) {
+      const refused = await callTool(bucket, "storage_file_write", {
+        path: "a.txt",
+        content: "late",
+        ...args,
+      });
+      expect((refused.result as Record<string, unknown>).isError).toBe(true);
+    }
+  });
+
+  test.each(["different bytes", "source"])(
+    "retains a destination winner after incomplete replacement: %s",
+    async (winner) => {
+      class InterleavedBucket extends MemoryBucket {
+        afterReplacement?: () => Promise<void>;
+        override async put(
+          key: string,
+          value: ArrayBuffer | ReadableStream | string,
+          options?: R2PutOptions,
+        ): Promise<R2Object | null> {
+          const result = await super.put(key, value, options);
+          if (
+            result &&
+            key === "drive/destination.txt" &&
+            this.afterReplacement
+          ) {
+            const run = this.afterReplacement;
+            this.afterReplacement = undefined;
+            await run();
+          }
+          return result;
+        }
+      }
+      const bucket = new InterleavedBucket();
+      const source = structured(
+        await callTool(bucket, "storage_file_write", {
+          path: "source.txt",
+          content: "source",
+        }),
+      );
+      const destination = structured(
+        await callTool(bucket, "storage_file_write", {
+          path: "destination.txt",
+          content: "old destination",
+        }),
+      );
+      bucket.afterReplacement = async () => {
+        const updateSource = await callTool(bucket, "storage_file_write", {
+          path: "source.txt",
+          content: "updated source",
+          expected_etag: source.etag,
+        });
+        expect(
+          (updateSource.result as Record<string, unknown>).isError,
+        ).not.toBe(true);
+        const copy = structured(
+          await callTool(bucket, "storage_file_info", {
+            path: "destination.txt",
+          }),
+        );
+        const updateDestination = await callTool(bucket, "storage_file_write", {
+          path: "destination.txt",
+          content: winner,
+          content_type: "text/winner",
+          expected_etag: copy.etag,
+        });
+        expect(
+          (updateDestination.result as Record<string, unknown>).isError,
+        ).not.toBe(true);
+      };
+      const partial = await callTool(bucket, "storage_file_move", {
+        source_path: "source.txt",
+        destination_path: "destination.txt",
+        overwrite: true,
+        expected_source_etag: source.etag,
+        expected_destination_etag: destination.etag,
+      });
+      const result = partial.result as {
+        isError: boolean;
+        content: Array<{ text: string }>;
+      };
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("move_incomplete");
+      expect(result.content[0].text).toContain("inspect both paths");
+      const currentSource = structured(
+        await callTool(bucket, "storage_file_read", { path: "source.txt" }),
+      );
+      const currentDestination = structured(
+        await callTool(bucket, "storage_file_read", {
+          path: "destination.txt",
+        }),
+      );
+      expect(currentSource.content).toBe("updated source");
+      expect(currentDestination.content).toBe(winner);
+      expect(currentDestination.content_type).toBe("text/winner");
+    },
+  );
+
+  test("rejects invalid revision arguments without changing files", async () => {
+    const bucket = new MemoryBucket();
+    const source = structured(
+      await callTool(bucket, "storage_file_write", {
+        path: "source.txt",
+        content: "source",
+      }),
+    );
+    const destination = structured(
+      await callTool(bucket, "storage_file_write", {
+        path: "destination.txt",
+        content: "destination",
+      }),
+    );
+    for (const invalid of [
+      null,
+      "",
+      "*",
+      'W/"weak"',
+      '"one","two"',
+      '"bad\r\nheader"',
+      '"' + "x".repeat(256) + '"',
+    ]) {
+      for (const [name, args] of [
+        [
+          "storage_file_write",
+          { path: "source.txt", content: "bad", expected_etag: invalid },
+        ],
+        ["storage_file_delete", { path: "source.txt", expected_etag: invalid }],
+        [
+          "storage_file_move",
+          {
+            source_path: "source.txt",
+            destination_path: "new.txt",
+            expected_source_etag: invalid,
+          },
+        ],
+        [
+          "storage_file_move",
+          {
+            source_path: "source.txt",
+            destination_path: "destination.txt",
+            expected_source_etag: source.etag,
+            overwrite: true,
+            expected_destination_etag: invalid,
+          },
+        ],
+      ] as Array<[string, Record<string, unknown>]>) {
+        const refused = await callTool(bucket, name, args);
+        expect((refused.result as Record<string, unknown>).isError).toBe(true);
+      }
+    }
+    expect(
+      structured(
+        await callTool(bucket, "storage_file_read", { path: "source.txt" }),
+      ).content,
+    ).toBe("source");
+    expect(
+      structured(
+        await callTool(bucket, "storage_file_info", {
+          path: "destination.txt",
+        }),
+      ).etag,
+    ).toBe(destination.etag);
+    const unnecessaryDestination = await callTool(bucket, "storage_file_move", {
+      source_path: "source.txt",
+      destination_path: "destination.txt",
+      expected_source_etag: source.etag,
+      expected_destination_etag: destination.etag,
+    });
+    expect(
+      (unnecessaryDestination.result as Record<string, unknown>).isError,
+    ).toBe(true);
   });
 
   test("rejects oversized objects from metadata before buffering their body", async () => {
