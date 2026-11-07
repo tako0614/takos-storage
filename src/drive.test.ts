@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 
 import worker from "./worker.ts";
 import { type AppSession, seal } from "./app-auth.ts";
@@ -25,7 +26,6 @@ class MemoryBucket implements R2Bucket {
       customMetadata?: Record<string, string>;
     }
   >();
-  private revision = 0;
   /** Caps a page like R2's own per-call maximum, so truncation is testable. */
   pageSize = 1000;
 
@@ -78,14 +78,17 @@ class MemoryBucket implements R2Bucket {
       data,
       contentType:
         options?.httpMetadata?.contentType ?? "application/octet-stream",
-      etag: `"drive-${++this.revision}"`,
+      // Single-part R2 validators identify content, not an upload counter.
+      etag: `"${createHash("md5").update(data).digest("hex")}"`,
       customMetadata: options?.customMetadata,
     });
     return (await this.get(key)) as R2Object;
   }
 
-  async delete(key: string): Promise<void> {
-    this.store.delete(key);
+  async delete(keys: string | string[]): Promise<void> {
+    for (const key of typeof keys === "string" ? [keys] : keys) {
+      this.store.delete(key);
+    }
   }
 
   // Paginates like R2 does (lexicographic keys, cursor = last key returned)
@@ -103,6 +106,10 @@ class MemoryBucket implements R2Bucket {
       key,
       size: entry.data.byteLength,
       uploaded: new Date(0),
+      httpEtag: entry.etag,
+      ...(options?.include?.includes("customMetadata")
+        ? { customMetadata: entry.customMetadata }
+        : {}),
       body: new Response(entry.data.slice()).body as ReadableStream,
       arrayBuffer: async () => entry.data.buffer as ArrayBuffer,
     }));
@@ -254,6 +261,116 @@ describe("workspace drive API", () => {
     );
     expect(deleted.status).toBe(200);
     expect(bucket.store.has("drive/file.txt")).toBe(false);
+  });
+
+  test.each(["delete", "move"] as const)(
+    "rejects an empty file's stale update after %s commits",
+    async (operation) => {
+      const bucket = new MemoryBucket();
+      const env = makeEnv(bucket, PUBLIC_ENV);
+      const path = "/api/drive/file/empty.txt";
+      expect(
+        (
+          await worker.fetch(
+            request("PUT", path, {
+              body: "",
+              headers: { "if-none-match": "*" },
+            }),
+            env,
+          )
+        ).status,
+      ).toBe(201);
+      const head = await worker.fetch(request("HEAD", path), env);
+      const etag = head.headers.get("etag")!;
+      const concurrentStatuses: number[] = [];
+      const interleaved: R2Bucket = {
+        get: (key) => bucket.get(key),
+        list: (options) => bucket.list(options),
+        delete: (key) => bucket.delete(key),
+        async put(key, value, options) {
+          const result = await bucket.put(key, value, options);
+          if (result && options?.customMetadata?.["takos-storage-deleting"]) {
+            concurrentStatuses.push(
+              (
+                await worker.fetch(
+                  request("PUT", path, {
+                    body: "concurrent update",
+                    headers: { "if-match": etag },
+                  }),
+                  env,
+                )
+              ).status,
+            );
+          }
+          return result;
+        },
+      };
+
+      const mutation = await worker.fetch(
+        operation === "delete"
+          ? request("DELETE", path, { headers: { "if-match": etag } })
+          : request("POST", "/api/drive/move", {
+              contentType: "application/json",
+              body: JSON.stringify({
+                source_path: "empty.txt",
+                destination_path: "renamed.txt",
+                source_etag: etag,
+              }),
+            }),
+        makeEnv(interleaved, PUBLIC_ENV),
+      );
+      expect(concurrentStatuses).toEqual([412]);
+      expect(mutation.status).toBe(200);
+      expect((await worker.fetch(request("GET", path), env)).status).toBe(404);
+      if (operation === "move") {
+        const moved = await worker.fetch(
+          request("GET", "/api/drive/file/renamed.txt"),
+          env,
+        );
+        expect(moved.status).toBe(200);
+        expect(await moved.text()).toBe("");
+      }
+    },
+  );
+
+  test("failed physical cleanup cannot revive an empty file with its stale ETag", async () => {
+    class CleanupFailureBucket extends MemoryBucket {
+      override async delete(): Promise<void> {
+        throw new Error("synthetic physical cleanup failure");
+      }
+    }
+    const bucket = new CleanupFailureBucket();
+    const env = makeEnv(bucket, PUBLIC_ENV);
+    const path = "/api/drive/file/empty.txt";
+    const original = await bucket.put("drive/empty.txt", "");
+    const etag = original!.httpEtag!;
+
+    await expect(
+      worker.fetch(
+        request("DELETE", path, { headers: { "if-match": etag } }),
+        env,
+      ),
+    ).rejects.toThrow("synthetic physical cleanup failure");
+    expect((await worker.fetch(request("GET", path), env)).status).toBe(404);
+    const listing = await worker.fetch(request("GET", "/api/drive/list"), env);
+    expect(
+      (await listing.json()) as { files: unknown[]; truncated: boolean },
+    ).toEqual({
+      files: [],
+      truncated: false,
+    });
+    const preconditions: Array<Record<string, string>> = [
+      { "if-match": etag },
+      { "if-none-match": "*" },
+    ];
+    for (const headers of preconditions) {
+      const updated = await worker.fetch(
+        request("PUT", path, { body: "late update", headers }),
+        env,
+      );
+      expect(updated.status).toBe(412);
+    }
+    expect((await worker.fetch(request("GET", path), env)).status).toBe(404);
   });
 
   test("moves one file with create-only destination semantics", async () => {

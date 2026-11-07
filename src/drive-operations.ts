@@ -50,7 +50,10 @@ export async function deleteDriveObject(
   expectedEtag: string,
 ): Promise<void> {
   const key = driveKey(path);
-  const tombstone = await bucket.put(key, "", {
+  // R2 validators identify content, not metadata. An empty marker retains an
+  // empty file's ETag and admits a stale writer before physical removal.
+  // Fresh marker content makes the logical delete change that validator too.
+  const tombstone = await bucket.put(key, crypto.randomUUID(), {
     httpMetadata: { contentType: "application/octet-stream" },
     customMetadata: { [DELETION_MARKER]: "1" },
     onlyIf: new Headers({ "if-match": expectedEtag }),
