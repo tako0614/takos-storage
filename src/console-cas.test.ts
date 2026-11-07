@@ -2,7 +2,13 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { createContext, runInContext } from "node:vm";
 import { storageConsoleHtml } from "./console.ts";
 import worker from "./worker.ts";
-import type { Env, R2Bucket, R2Object, R2PutOptions } from "./types.ts";
+import type {
+  Env,
+  R2Bucket,
+  R2Object,
+  R2PutOptions,
+  R2ListOptions,
+} from "./types.ts";
 
 // A disposable public-mode bucket, matching the existing Drive API tests.
 // No real account, session, provider, or stored user data is involved.
@@ -61,9 +67,12 @@ class Bucket implements R2Bucket {
   async delete(key: string) {
     if (this.objects.delete(key)) this.effects++;
   }
-  async list() {
+  async list(options?: R2ListOptions) {
     const objects = await Promise.all(
-      [...this.objects.keys()].sort().map((key) => this.get(key)),
+      [...this.objects.keys()]
+        .filter((key) => key.startsWith(options?.prefix ?? ""))
+        .sort()
+        .map((key) => this.get(key)),
     );
     return {
       objects: objects.filter((x): x is R2Object => x !== null),
@@ -155,7 +164,13 @@ interface Item {
   etag?: string;
 }
 interface Client {
-  state: { files: unknown[]; query: string; nav: string; loading: boolean };
+  state: {
+    files: { path: string; etag?: string }[];
+    query: string;
+    nav: string;
+    loading: boolean;
+    truncated: boolean;
+  };
   items: () => Item[];
   refresh(): void;
   select(item: Item): void;
@@ -173,7 +188,7 @@ async function until(check: () => boolean) {
   }
 }
 
-async function fixture() {
+async function fixture(options: { loseFolderAck?: boolean } = {}) {
   const bucket = new Bucket();
   const env: Env = { BUCKET: bucket, ALLOW_UNAUTHENTICATED_DRIVE: "1" };
   const requests: { method: string; path: string; status: number }[] = [];
@@ -248,7 +263,14 @@ async function fixture() {
     localStorage: { getItem: () => null, setItem() {} },
     window: { addEventListener() {}, innerWidth: 1200, innerHeight: 800 },
     location: { pathname: "/", search: "", href: "" },
-    fetch: send,
+    fetch: async (path: string, init?: RequestInit) => {
+      const response = await send(path, init);
+      if (options.loseFolderAck && path === "/api/drive/folder") {
+        await response.body?.cancel();
+        throw new Error("synthetic loss after the real Worker completed");
+      }
+      return response;
+    },
     URL,
     Blob,
     File,
@@ -303,6 +325,7 @@ async function fixture() {
     requests.filter((x) => x.method !== "GET" && x.method !== "HEAD");
   return {
     bucket,
+    actions,
     send,
     requests,
     writes,
@@ -451,22 +474,142 @@ describe("console CAS callers against the product HTTP API", () => {
     expect(f.node("toast").textContent).toContain("revision");
   });
 
-  test("unsupported whole-folder actions fail before any partial copy or deletion", async () => {
+  test("confirmed whole-folder rename and deletion use one reviewed server operation each", async () => {
     const f = await fixture();
     await f.create("folder/", "");
     await f.create("folder/child.txt", "child");
     await f.refresh();
-    const folder = f.item("folder"),
-      before = f.writes().length,
-      effects = f.bucket.effects;
-    f.rename(folder, "other");
-    f.remove(folder);
-    await Bun.sleep(20);
-    expect(f.writes().length).toBe(before);
-    expect(f.bucket.effects).toBe(effects);
-    expect(f.node("toast").textContent).toContain("whole folder");
+    f.rename(f.item("folder"), "other");
+    await until(() => f.writes().some((x) => x.path === "/api/drive/folder"));
+    await until(
+      () =>
+        !f.client.state.loading &&
+        f.client.items().some((x) => x.name === "other"),
+    );
     expect(
-      await (await f.send("/api/drive/file/folder%2Fchild.txt")).text(),
+      await (await f.send("/api/drive/file/other%2Fchild.txt")).text(),
     ).toBe("child");
+    f.remove(f.item("other"));
+    await until(
+      () =>
+        f.writes().filter((x) => x.path === "/api/drive/folder").length === 2,
+    );
+    await until(
+      () =>
+        !f.client.state.loading &&
+        !f.client.items().some((x) => x.name === "other"),
+    );
+    expect(
+      f
+        .writes()
+        .filter((x) => x.path === "/api/drive/folder")
+        .map((x) => x.status),
+    ).toEqual([200, 200]);
+  });
+
+  test("folder confirmation retains its observed revisions despite an intervening list refresh", async () => {
+    const f = await fixture();
+    await f.create("folder/");
+    await f.create("folder/child", "one");
+    await f.refresh();
+    f.client.select(f.item("folder"));
+    f.actions.get("rename")!.click();
+    const old = f.bucket.objects.get("drive/folder/child")!.etag;
+    expect(f.node("name-dialog-note").textContent).toContain("2 reviewed");
+    await f.send("/api/drive/file/folder%2Fchild", {
+      method: "PUT",
+      headers: { "if-match": old },
+      body: "other writer",
+    });
+    await f.refresh();
+    const effects = f.bucket.effects;
+    f.node("name-input").value = "other";
+    f.node("name-form").dispatch("submit");
+    await until(() => f.writes().some((x) => x.path === "/api/drive/folder"));
+    expect(
+      f
+        .writes()
+        .filter((x) => x.path === "/api/drive/folder")
+        .map((x) => x.status),
+    ).toEqual([412]);
+    expect(f.bucket.effects).toBe(effects);
+    expect(await (await f.send("/api/drive/file/folder%2Fchild")).text()).toBe(
+      "other writer",
+    );
+  });
+
+  test("cancel, incomplete listings, and missing child revisions never submit a folder mutation", async () => {
+    const f = await fixture();
+    await f.create("folder/");
+    await f.create("folder/child", "one");
+    await f.refresh();
+    f.client.select(f.item("folder"));
+    f.actions.get("delete")!.click();
+    expect(f.node("delete-dialog").open).toBe(true);
+    expect(f.node("delete-body").textContent).toContain("2 reviewed");
+    f.node("delete-dialog").close();
+    await Bun.sleep(10);
+    expect(
+      f.writes().filter((x) => x.path === "/api/drive/folder"),
+    ).toHaveLength(0);
+    f.client.state.truncated = true;
+    f.rename(f.item("folder"), "blocked");
+    await Bun.sleep(10);
+    expect(
+      f.writes().filter((x) => x.path === "/api/drive/folder"),
+    ).toHaveLength(0);
+    f.client.state.truncated = false;
+    delete f.client.state.files.find((x) => x.path === "folder/child")!.etag;
+    f.rename(f.item("folder"), "blocked");
+    await Bun.sleep(10);
+    expect(
+      f.writes().filter((x) => x.path === "/api/drive/folder"),
+    ).toHaveLength(0);
+  });
+
+  test("partial cleanup shows persistent manual reconciliation and keeps the copied data", async () => {
+    const f = await fixture();
+    await f.create("folder/");
+    await f.create("folder/child", "only copy");
+    await f.refresh();
+    f.bucket.delete = async () => {
+      throw new Error("synthetic cleanup failure");
+    };
+    f.rename(f.item("folder"), "other");
+    await until(() => f.node("folder-result-dialog").open);
+    expect(f.node("folder-result-message").textContent).toContain(
+      "stopped before completion",
+    );
+    expect(f.node("folder-result-paths").textContent).toContain("folder/child");
+    expect(await (await f.send("/api/drive/file/other%2Fchild")).text()).toBe(
+      "only copy",
+    );
+    expect(
+      f.writes().filter((x) => x.path === "/api/drive/folder"),
+    ).toHaveLength(1);
+    expect(f.node("toast").textContent).not.toContain("completed");
+  });
+
+  test("unknown acknowledgement is not retried or reported as saved after the Worker committed", async () => {
+    const f = await fixture({ loseFolderAck: true });
+    await f.create("folder/");
+    await f.create("folder/child", "retained");
+    await f.refresh();
+    f.rename(f.item("folder"), "other");
+    await until(() => f.node("folder-result-dialog").open);
+    await until(() => !f.client.state.loading);
+    expect(f.node("folder-result-message").textContent).toContain(
+      "could not be confirmed",
+    );
+    expect(
+      f
+        .writes()
+        .filter((x) => x.path === "/api/drive/folder")
+        .map((x) => x.status),
+    ).toEqual([200]);
+    expect(await (await f.send("/api/drive/file/other%2Fchild")).text()).toBe(
+      "retained",
+    );
+    expect(f.node("toast").textContent).not.toContain("completed");
   });
 });

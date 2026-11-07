@@ -91,6 +91,8 @@ export async function deleteStoredObject(
  * Create-only copies retain the existing best-effort conditional rollback.
  * A replacement copy is retained on later failure and must be reconciled;
  * content ETags cannot prove a safe restoration across metadata-only/ABA writes.
+ * Folder snapshots explicitly retain every copied destination on failure;
+ * existing single-file callers keep their default compensation policy.
  */
 export async function moveDriveObject(
   bucket: R2Bucket,
@@ -99,6 +101,7 @@ export async function moveDriveObject(
   expectedSourceEtag: string,
   maximumBytes: number,
   replacement?: { expectedDestinationEtag: string },
+  options: { retainCopyOnFailure?: boolean } = {},
 ): Promise<{ size: number; contentType: string }> {
   const source = await getDriveObject(bucket, sourcePath);
   if (source.size > maximumBytes) {
@@ -135,7 +138,8 @@ export async function moveDriveObject(
     }
   }
   const copied = await bucket.put(driveKey(destinationPath), source.body, {
-    httpMetadata: { contentType },
+    httpMetadata: { ...source.httpMetadata, contentType },
+    customMetadata: source.customMetadata,
     onlyIf: replacement
       ? new Headers({ "if-match": replacement.expectedDestinationEtag })
       : { etagDoesNotMatch: "*" },
@@ -155,10 +159,10 @@ export async function moveDriveObject(
   try {
     await deleteDriveObject(bucket, sourcePath, source.httpEtag);
   } catch (error) {
-    if (replacement) {
+    if (replacement || options.retainCopyOnFailure) {
       throw new DriveOperationError(
         "move_incomplete",
-        "destination was replaced but source removal failed; inspect both paths before retrying",
+        "destination was copied but source removal failed; inspect both paths before retrying",
         { cause: error },
       );
     }

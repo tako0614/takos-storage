@@ -34,6 +34,12 @@ import {
   moveDriveObject,
 } from "./drive-operations.ts";
 import { isValidDrivePath } from "./drive-path.ts";
+import {
+  FolderOperationError,
+  MAX_FOLDER_REQUEST_BYTES,
+  parseFolderOperation,
+  performFolderOperation,
+} from "./drive-folder-operations.ts";
 
 const FILE_ROUTE = "/api/drive/file/";
 const MOVE_ROUTE = "/api/drive/move";
@@ -135,6 +141,40 @@ export async function handleDriveRoute(
 
   const unauthorized = await requireAppAuth(env, request);
   if (unauthorized) return unauthorized;
+
+  if (url.pathname === "/api/drive/folder") {
+    if (request.method !== "POST")
+      return json({ error: "method_not_allowed" }, 405);
+    const bounded = await boundedRequestBody(request, MAX_FOLDER_REQUEST_BYTES);
+    if (!bounded.ok) return json({ error: bounded.error }, bounded.status);
+    let input: unknown;
+    try {
+      input = await new Response(bounded.body).json();
+    } catch (error) {
+      return json(
+        {
+          error:
+            error instanceof RequestBodyTooLargeError
+              ? "request_too_large"
+              : "invalid_json",
+        },
+        error instanceof RequestBodyTooLargeError ? 413 : 400,
+      );
+    } finally {
+      await bounded.dispose();
+    }
+    try {
+      const result = await performFolderOperation(
+        env.BUCKET,
+        parseFolderOperation(input),
+      );
+      return json(result, result.ok ? 200 : 409);
+    } catch (error) {
+      if (error instanceof FolderOperationError)
+        return json({ error: error.code }, error.status);
+      throw error;
+    }
+  }
 
   if (url.pathname === "/api/drive/list") {
     if (request.method !== "GET")
