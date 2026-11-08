@@ -3,8 +3,8 @@
  *
  * Runtime object calls use invocation-only Takosumi Interface OAuth
  * credentials. Every call is checked against one exact permission and the
- * canonical /o resource URI; the resolved InterfaceBinding id is the physical
- * storage namespace boundary.
+ * canonical /o resource URI. Personal calls use their InterfaceBinding id;
+ * separately approved app-data calls use the issuer's current shared namespace.
  */
 
 import type { Env } from "./types.ts";
@@ -182,13 +182,16 @@ async function fetchHandler(
       expectedAudience: audience,
       expectedWorkspaceId: env.APP_WORKSPACE_ID,
       expectedCapsuleId: env.APP_CAPSULE_ID,
+      allowAppShared: true,
       ...(interfaceUserInfoFetch ? { fetchImpl: interfaceUserInfoFetch } : {}),
     },
   );
   if (!authorization) {
     return json({ error: "invalid_interface_oauth_token" }, 401);
   }
-  const storagePrefix = bindingStoragePrefix(authorization.interfaceBindingId);
+  const storagePrefix = authorization.appSharedNamespace
+    ? `interface-app-data/${authorization.appSharedNamespace}/`
+    : bindingStoragePrefix(authorization.interfaceBindingId);
 
   if (isListPath) {
     const requested = url.searchParams.get("prefix") ?? "";

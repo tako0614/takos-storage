@@ -9,6 +9,8 @@ export interface InterfaceOAuthOptions {
   expectedAudience: string;
   expectedWorkspaceId?: string;
   expectedCapsuleId?: string;
+  /** Only the object HTTP surface opts into the separate app-data purpose. */
+  allowAppShared?: boolean;
   fetchImpl?: (
     input: RequestInfo | URL,
     init?: RequestInit,
@@ -24,6 +26,53 @@ export interface InterfaceOAuthAuthorization {
   readonly interfaceResolvedRevision: number;
   readonly audience: string;
   readonly permission: string;
+  readonly appSharedNamespace?: string;
+}
+
+function appSharedNamespace(
+  evidence: Record<string, unknown>,
+  expectedCapsuleId: string | undefined,
+): string | null {
+  const authority = evidence.app_data;
+  if (!boundedId(expectedCapsuleId) || !isRecord(authority)) return null;
+  const keys = [
+    "contract",
+    "namespace_id",
+    "consumer_capsule_id",
+    "provider_capsule_id",
+    "ownership_epoch",
+    "provider_ownership_epoch",
+    "app_role",
+    "interface_link_id",
+    "interface_link_generation",
+    "interface_binding_generation",
+    "interface_generation",
+  ];
+  if (
+    Object.keys(authority).length !== keys.length ||
+    Object.keys(authority).some((key) => !keys.includes(key)) ||
+    authority.contract !== "takosumi.interface-app-data/v1" ||
+    typeof authority.namespace_id !== "string" ||
+    !/^appd_[0-9a-f]{64}$/u.test(authority.namespace_id) ||
+    !boundedId(authority.consumer_capsule_id) ||
+    authority.provider_capsule_id !== expectedCapsuleId ||
+    !boundedId(authority.interface_link_id) ||
+    (authority.app_role !== "owner" && authority.app_role !== "member") ||
+    [authority.ownership_epoch, authority.provider_ownership_epoch].some(
+      (epoch) => !Number.isSafeInteger(epoch) || (epoch as number) < 0,
+    ) ||
+    [
+      authority.interface_link_generation,
+      authority.interface_binding_generation,
+      authority.interface_generation,
+    ].some(
+      (generation) =>
+        !Number.isSafeInteger(generation) || (generation as number) <= 0,
+    )
+  ) {
+    return null;
+  }
+  return authority.namespace_id;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -191,8 +240,14 @@ export async function authorizeInterfaceOAuthBearer(
     const claims = await readBoundedJson(response);
     if (!isRecord(claims) || !isRecord(claims.takosumi)) return null;
     const evidence = claims.takosumi;
+    const namespace =
+      claims.token_use === "interface_app_data" && options.allowAppShared
+        ? appSharedNamespace(evidence, expectedCapsuleId)
+        : null;
     if (
-      claims.token_use !== "interface_oauth" ||
+      (claims.token_use !== "interface_oauth" && namespace === null) ||
+      (claims.token_use === "interface_oauth" &&
+        evidence.app_data !== undefined) ||
       !boundedId(claims.sub) ||
       claims.aud !== expectedAudience ||
       claims.scope !== expectedPermission ||
@@ -224,6 +279,7 @@ export async function authorizeInterfaceOAuthBearer(
       interfaceResolvedRevision: evidence.interface_resolved_revision as number,
       audience: expectedAudience,
       permission: expectedPermission,
+      ...(namespace === null ? {} : { appSharedNamespace: namespace }),
     };
   } catch {
     return null;
