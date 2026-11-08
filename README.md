@@ -12,7 +12,7 @@ OpenTofu module 内で外部コマンドや download data source は実行しま
 
 managed runtime の `/o` と `/mcp` は Takosumi Accounts が発行する invocation-only Interface OAuth credential を使います。Worker は current Core state を再検証する Accounts UserInfo を authority として、次を毎 request 検証します。
 
-- `token_use = interface_oauth`
+- personal呼出しの`token_use = interface_oauth`（`/o`の明示的なapp-shared用途は下記）
 - canonical resource URI と完全一致する `aud`
 - operation ごとの単一 permission (`storage.object.read` / `write` / `delete` / `list`、または `mcp.invoke`)
 - configured Capsule と non-empty Principal subject（Workspace は設定した場合だけ互換照合）
@@ -22,7 +22,17 @@ managed runtime の `/o` と `/mcp` は Takosumi Accounts が発行する invoca
 
 App sign-in を更新するときは、consumer apps を先に deploy し、Takosumi Accounts の open sign-in writer B (#657) を最後に deploy します。Accounts の共通 `AppRole` は `owner` / `member` で、現在の owner/member role と完全一致する Capsule claim が private Drive access を許可します。`app_role` 発行前の互換期間は同じ Capsule に結び付く旧 Workspace membership を使います。未更新の self-host Storage install は引き続き Workspace membership を必要とするため、Capsule 設定へ移行するまでは `APP_WORKSPACE_ID` と Workspace membership を維持してください。
 
-`/o` の object は `interface-bindings/<binding-id>/` 以下に保存されるため、別の InterfaceBinding から同じ相対 key は見えません。旧 `tksvc_` HMAC、共有 signing key、standing admin token はありません。
+personalな`/o`のobjectは`interface-bindings/<binding-id>/`以下に保存されるため、別のInterfaceBindingから同じ相対keyは見えません。旧`tksvc_` HMAC、共有signing key、standing admin tokenはありません。
+
+共有データ用途に対応したCore/Accountsで、consumer Appとproviderの間に`oauth2.app-data.v1`のLinkを明示承認した場合、`/o`は別用途の`token_use = interface_app_data`も受け取ります。
+現在のUserInfoが返す`takosumi.app_data`について、`takosumi.interface-app-data/v1`のclosed schema、
+`appd_`付きnamespace、consumer/provider Capsule、owner/member、consumerとprovider双方のownership epoch、Link/Binding/Interfaceのgenerationを検査します。
+この用途はexactな`APP_CAPSULE_ID`が必須で、Workspace設定やcallerのnamespace指定では代用できません。
+Accounts/Coreが現在のmember・Link・Binding・permissionを再検証した応答だけを使い、個々のPrincipal subjectとBindingを維持したまま、
+同じApp namespaceのobjectを`interface-app-data/<namespace-id>/`以下で共有します。MCPとブラウザーDriveはこの新用途を受け付けません。
+
+既存のpersonal保存先はそのまま残り、新用途への自動移動・統合はしません。既存consumerの切替時は、
+データの移行と回復手順を別途確認してください。sourceの対応だけで既存サービスの設定やデータを変更することはありません。
 
 Interface 宣言は repository manifest、InterfaceBinding と runtime state は Takosumi が所有します。module は `api_url`、`mcp_url`、`launch_url` などの普通の Output だけを返し、Takosumi 側が必要な Output を Interface document input に明示 mapping します。
 
@@ -104,7 +114,7 @@ sandbox/default-src-none CSPを付けます。これは配備先browserでの検
 
 object APIもDrive/MCPと同じ論理削除markerを使います。物理cleanup失敗は成功ACKにせず、
 残留markerはGET/HEAD/listに表示しません。旧ETag更新と新規作成を拒否し、operator repairが必要です。
-ETagのcontent/metadata/ABAの限界は下記MCPと同じです。InterfaceBindingごとの保存先とoperation権限は変わりません。
+ETagのcontent/metadata/ABAの限界は下記MCPと同じです。personalはInterfaceBindingごと、明示的なapp-shared用途は検証済みApp namespaceごとの保存先を使い、operation権限と条件付き更新は同じです。
 
 ## MCP file operations
 
