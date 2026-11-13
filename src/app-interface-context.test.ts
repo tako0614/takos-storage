@@ -7,6 +7,9 @@ const env: Env = {
   OIDC_ISSUER_URL: "https://accounts.example",
   APP_CAPSULE_ID: "capsule_storage",
   BUCKET: {
+    async head() {
+      return null;
+    },
     async get() {
       return null;
     },

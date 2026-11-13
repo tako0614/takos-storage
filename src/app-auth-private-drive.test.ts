@@ -34,6 +34,10 @@ async function fixture(
     APP_CAPSULE_ID: "app-storage",
     APP_WORKSPACE_ID: "legacy-workspace",
     BUCKET: {
+      async head(key) {
+        effects.push("head");
+        return { key, size: 6, uploaded: new Date(0) };
+      },
       async get(key) {
         effects.push("get");
         return {
@@ -55,8 +59,6 @@ async function fixture(
           size: 3,
           uploaded: new Date(0),
           httpEtag: '"revision"',
-          body: new Response("new").body!,
-          arrayBuffer: async () => new ArrayBuffer(0),
         };
       },
       async delete() {

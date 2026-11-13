@@ -9,6 +9,7 @@ import type {
   Env,
   R2Bucket,
   R2Object,
+  R2ObjectBody,
   R2PutOptions,
   R2ListOptions,
 } from "../src/types.ts";
@@ -18,7 +19,20 @@ class Bucket implements R2Bucket {
     string,
     { bytes: Uint8Array; options?: R2PutOptions }
   >();
-  async get(key: string): Promise<R2Object | null> {
+  async head(key: string): Promise<R2Object | null> {
+    const x = this.objects.get(key);
+    if (!x) return null;
+    return {
+      key,
+      size: x.bytes.length,
+      uploaded: new Date(0),
+      httpEtag: `"${createHash("md5").update(x.bytes).digest("hex")}"`,
+      httpMetadata: x.options?.httpMetadata,
+      customMetadata: x.options?.customMetadata,
+    };
+  }
+
+  async get(key: string): Promise<R2ObjectBody | null> {
     const x = this.objects.get(key);
     if (!x) return null;
     return {
@@ -37,7 +51,7 @@ class Bucket implements R2Bucket {
     value: ArrayBuffer | ReadableStream | string,
     options?: R2PutOptions,
   ) {
-    const current = await this.get(key),
+    const current = await this.head(key),
       condition = options?.onlyIf;
     const match =
       condition instanceof Headers
@@ -56,7 +70,7 @@ class Bucket implements R2Bucket {
       return null;
     const bytes = new Uint8Array(await new Response(value).arrayBuffer());
     this.objects.set(key, { bytes, options });
-    return this.get(key);
+    return this.head(key);
   }
   async delete(keys: string | string[]) {
     for (const key of Array.isArray(keys) ? keys : [keys])
@@ -66,7 +80,7 @@ class Bucket implements R2Bucket {
     const objects = await Promise.all(
       [...this.objects.keys()]
         .filter((key) => key.startsWith(options.prefix ?? ""))
-        .map(async (key) => (await this.get(key))!),
+        .map(async (key) => (await this.head(key))!),
     );
     return { objects, truncated: false };
   }

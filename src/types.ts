@@ -9,6 +9,7 @@ export interface R2HttpMetadata {
   contentType?: string;
 }
 
+/** Metadata returned by native R2 head, put and list. */
 export interface R2Object {
   key: string;
   size: number;
@@ -16,6 +17,9 @@ export interface R2Object {
   httpEtag?: string;
   httpMetadata?: R2HttpMetadata;
   customMetadata?: Record<string, string>;
+}
+
+export interface R2ObjectBody extends R2Object {
   body: ReadableStream;
   arrayBuffer(): Promise<ArrayBuffer>;
 }
@@ -46,7 +50,8 @@ export interface R2ListOptions {
 }
 
 export interface R2Bucket {
-  get(key: string): Promise<R2Object | null>;
+  head(key: string): Promise<R2Object | null>;
+  get(key: string): Promise<R2ObjectBody | null>;
   put(
     key: string,
     value: ArrayBuffer | ReadableStream | string,

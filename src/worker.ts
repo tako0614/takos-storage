@@ -237,7 +237,14 @@ async function fetchHandler(
   const physicalKey = `${storagePrefix}${key}`;
 
   if (expectedPermission === "storage.object.read") {
-    const object = await env.BUCKET.get(physicalKey);
+    let object;
+    let body: ReadableStream | null = null;
+    if (request.method === "HEAD") {
+      object = await env.BUCKET.head(physicalKey);
+    } else {
+      object = await env.BUCKET.get(physicalKey);
+      body = object?.body ?? null;
+    }
     if (!object || isDriveDeletionTombstone(object))
       return json({ error: "not_found" }, 404);
     const headers = new Headers({
@@ -248,10 +255,7 @@ async function fetchHandler(
       "referrer-policy": "no-referrer",
     });
     if (object.httpEtag) headers.set("etag", object.httpEtag);
-    if (request.method === "HEAD") {
-      return new Response(null, { status: 200, headers });
-    }
-    return new Response(object.body, { status: 200, headers });
+    return new Response(body, { status: 200, headers });
   }
 
   if (expectedPermission === "storage.object.write") {

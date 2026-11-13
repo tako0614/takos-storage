@@ -6,6 +6,7 @@ import type {
   Env,
   R2Bucket,
   R2Object,
+  R2ObjectBody,
   R2PutOptions,
   R2ListOptions,
 } from "./types.ts";
@@ -24,7 +25,21 @@ class Bucket implements R2Bucket {
   >();
   effects = 0;
   pageSize = 1000;
-  async get(key: string): Promise<R2Object | null> {
+  async head(key: string): Promise<R2Object | null> {
+    const item = this.objects.get(key);
+    if (!item) return null;
+    const bytes = item.bytes;
+    return {
+      key,
+      size: bytes.length,
+      uploaded: new Date(0),
+      httpEtag: item.etag,
+      httpMetadata: { contentType: item.type },
+      customMetadata: item.metadata,
+    };
+  }
+
+  async get(key: string): Promise<R2ObjectBody | null> {
     const item = this.objects.get(key);
     if (!item) return null;
     const bytes = item.bytes.slice();
@@ -63,7 +78,7 @@ class Bucket implements R2Bucket {
       type: options?.httpMetadata?.contentType ?? "application/octet-stream",
       metadata: options?.customMetadata,
     });
-    return this.get(key);
+    return this.head(key);
   }
   async delete(key: string) {
     if (this.objects.delete(key)) this.effects++;
@@ -77,7 +92,7 @@ class Bucket implements R2Bucket {
       )
       .sort();
     const keys = all.slice(0, Math.min(this.pageSize, options?.limit ?? 1000));
-    const objects = await Promise.all(keys.map((key) => this.get(key)));
+    const objects = await Promise.all(keys.map((key) => this.head(key)));
     return {
       objects: objects.filter((x): x is R2Object => x !== null),
       truncated: all.length > keys.length,

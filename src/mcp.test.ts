@@ -8,6 +8,7 @@ import type {
   R2Bucket,
   R2ListOptions,
   R2Object,
+  R2ObjectBody,
   R2Objects,
   R2PutOptions,
 } from "./types.ts";
@@ -25,7 +26,20 @@ class MemoryBucket implements R2Bucket {
   readonly store = new Map<string, StoredObject>();
   arrayBufferReads = 0;
 
-  async get(key: string): Promise<R2Object | null> {
+  async head(key: string): Promise<R2Object | null> {
+    const entry = this.store.get(key);
+    if (!entry) return null;
+    return {
+      key,
+      size: entry.reportedSize ?? entry.data.byteLength,
+      uploaded: new Date("2026-01-02T03:04:05.000Z"),
+      httpEtag: `"${createHash("md5").update(entry.data).digest("hex")}"`,
+      httpMetadata: { contentType: entry.contentType },
+      customMetadata: entry.customMetadata,
+    };
+  }
+
+  async get(key: string): Promise<R2ObjectBody | null> {
     const entry = this.store.get(key);
     if (!entry) return null;
     return {
@@ -60,7 +74,7 @@ class MemoryBucket implements R2Bucket {
           : `"${onlyIf.etagMatches}"`;
     if (
       etagMatches != null &&
-      (await this.get(key))?.httpEtag !== etagMatches
+      (await this.head(key))?.httpEtag !== etagMatches
     ) {
       return null;
     }
@@ -82,7 +96,7 @@ class MemoryBucket implements R2Bucket {
         options?.httpMetadata?.contentType ?? "application/octet-stream",
       customMetadata: options?.customMetadata,
     });
-    return (await this.get(key)) as R2Object;
+    return (await this.head(key)) as R2Object;
   }
 
   async delete(keys: string | string[]): Promise<void> {
@@ -101,7 +115,7 @@ class MemoryBucket implements R2Bucket {
     const keys = matching.slice(offset, offset + limit);
     const objects = await Promise.all(
       keys.map(async (key) => {
-        const object = (await this.get(key))!;
+        const object = (await this.head(key))!;
         if (!options.include?.includes("customMetadata")) {
           delete object.customMetadata;
         }
