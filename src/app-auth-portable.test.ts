@@ -7,6 +7,9 @@ import type { Env, R2Bucket } from "./types.ts";
 const redirect = "https://installed-storage.example/api/auth/callback/takos";
 const issuer = "https://accounts.example";
 const bucket: R2Bucket = {
+  async head() {
+    return null;
+  },
   async get() {
     return null;
   },

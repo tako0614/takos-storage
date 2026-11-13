@@ -111,6 +111,8 @@ strong quoted `ETag` を `If-Match` に指定し、明示作成には `If-None-M
 未指定428・不正形式400・不一致412になります。従来の無条件上書き・削除callerは条件を配送してください。
 OfficeのJSON fetchのため正当なmedia typeとbytesは保持し、GET/HEADにattachment、nosniff、
 sandbox/default-src-none CSPを付けます。これは配備先browserでの検証を代替しません。
+`/o/<key>` と `/api/drive/file/<path>` のHEADはR2のmetadata-only `head()`を使い、
+本文streamを取得せず、GETと同じ認可・論理削除marker検査・response headerを適用します。
 
 object APIもDrive/MCPと同じ論理削除markerを使います。物理cleanup失敗は成功ACKにせず、
 残留markerはGET/HEAD/listに表示しません。旧ETag更新と新規作成を拒否し、operator repairが必要です。

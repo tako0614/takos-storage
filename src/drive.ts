@@ -30,6 +30,7 @@ import {
   DriveOperationError,
   exactContentEtag as exactEtag,
   getDriveObject,
+  headDriveObject,
   isDriveDeletionTombstone,
   moveDriveObject,
 } from "./drive-operations.ts";
@@ -365,8 +366,14 @@ export async function handleDriveRoute(
 
   if (request.method === "GET" || request.method === "HEAD") {
     let object;
+    let body: ReadableStream | null = null;
     try {
-      object = await getDriveObject(env.BUCKET, path);
+      if (request.method === "HEAD") {
+        object = await headDriveObject(env.BUCKET, path);
+      } else {
+        object = await getDriveObject(env.BUCKET, path);
+        body = object.body;
+      }
     } catch (error) {
       if (error instanceof DriveOperationError) return operationError(error);
       throw error;
@@ -376,10 +383,7 @@ export async function handleDriveRoute(
       storedContentType(object.httpMetadata?.contentType),
     );
     if (object.httpEtag) headers.set("etag", object.httpEtag);
-    if (request.method === "HEAD") {
-      return new Response(null, { status: 200, headers });
-    }
-    return new Response(object.body, { status: 200, headers });
+    return new Response(body, { status: 200, headers });
   }
 
   if (request.method === "PUT") {

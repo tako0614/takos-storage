@@ -9,6 +9,7 @@ import type {
   R2Bucket,
   R2ListOptions,
   R2Object,
+  R2ObjectBody,
   R2Objects,
   R2PutOptions,
 } from "./types.ts";
@@ -29,7 +30,20 @@ class MemoryBucket implements R2Bucket {
   /** Caps a page like R2's own per-call maximum, so truncation is testable. */
   pageSize = 1000;
 
-  async get(key: string): Promise<R2Object | null> {
+  async head(key: string): Promise<R2Object | null> {
+    const entry = this.store.get(key);
+    if (!entry) return null;
+    return {
+      key,
+      size: entry.reportedSize ?? entry.data.byteLength,
+      uploaded: new Date(0),
+      httpEtag: entry.etag,
+      httpMetadata: { contentType: entry.contentType },
+      customMetadata: entry.customMetadata,
+    };
+  }
+
+  async get(key: string): Promise<R2ObjectBody | null> {
     const entry = this.store.get(key);
     if (!entry) return null;
     return {
@@ -82,7 +96,7 @@ class MemoryBucket implements R2Bucket {
       etag: `"${createHash("md5").update(data).digest("hex")}"`,
       customMetadata: options?.customMetadata,
     });
-    return (await this.get(key)) as R2Object;
+    return (await this.head(key)) as R2Object;
   }
 
   async delete(keys: string | string[]): Promise<void> {
@@ -110,8 +124,6 @@ class MemoryBucket implements R2Bucket {
       ...(options?.include?.includes("customMetadata")
         ? { customMetadata: entry.customMetadata }
         : {}),
-      body: new Response(entry.data.slice()).body as ReadableStream,
-      arrayBuffer: async () => entry.data.buffer as ArrayBuffer,
     }));
     const truncated = matching.length > page.length;
     return {
@@ -284,6 +296,7 @@ describe("workspace drive API", () => {
       const etag = head.headers.get("etag")!;
       const concurrentStatuses: number[] = [];
       const interleaved: R2Bucket = {
+        head: (key) => bucket.head(key),
         get: (key) => bucket.get(key),
         list: (options) => bucket.list(options),
         delete: (key) => bucket.delete(key),

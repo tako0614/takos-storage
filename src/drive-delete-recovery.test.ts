@@ -5,6 +5,7 @@ import type {
   R2Bucket,
   R2ListOptions,
   R2Object,
+  R2ObjectBody,
   R2PutOptions,
 } from "./types.ts";
 
@@ -18,7 +19,21 @@ class Bucket implements R2Bucket {
   pageSize = 1000;
   beforePut?: (key: string, options?: R2PutOptions) => Promise<void>;
   beforeDelete?: (key: string) => Promise<void>;
-  async get(key: string): Promise<R2Object | null> {
+  async head(key: string): Promise<R2Object | null> {
+    const object = this.data.get(key);
+    if (!object) return null;
+    const bytes = object.bytes;
+    return {
+      key,
+      size: bytes.length,
+      uploaded: new Date(0),
+      httpEtag: object.etag,
+      httpMetadata: object.options?.httpMetadata,
+      customMetadata: object.options?.customMetadata,
+    };
+  }
+
+  async get(key: string): Promise<R2ObjectBody | null> {
     const object = this.data.get(key);
     if (!object) return null;
     const bytes = object.bytes.slice();
@@ -60,7 +75,7 @@ class Bucket implements R2Bucket {
       options,
     });
     this.effects++;
-    return this.get(key);
+    return this.head(key);
   }
   async delete(keys: string | string[]) {
     for (const key of typeof keys === "string" ? [keys] : keys) {
@@ -80,7 +95,7 @@ class Bucket implements R2Bucket {
       );
     const keys = all.slice(0, Math.min(options?.limit ?? 1000, this.pageSize));
     const objects = (
-      await Promise.all(keys.map((key) => this.get(key)))
+      await Promise.all(keys.map((key) => this.head(key)))
     ).filter((x): x is R2Object => !!x);
     return {
       objects,

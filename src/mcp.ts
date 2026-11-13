@@ -9,7 +9,7 @@
  * explicitly configure PUBLISHED_MCP_AUTH_TOKEN as a standalone fallback.
  */
 
-import type { Env, R2Object } from "./types.ts";
+import type { Env, R2Object, R2ObjectBody } from "./types.ts";
 import {
   deleteDriveObject,
   DRIVE_PREFIX,
@@ -270,7 +270,7 @@ function objectMetadata(object: R2Object, path: string): JsonRecord {
   };
 }
 
-async function getDriveObject(env: Env, path: string): Promise<R2Object> {
+async function getDriveObject(env: Env, path: string): Promise<R2ObjectBody> {
   return readDriveObject(env.BUCKET, path);
 }
 

@@ -1,4 +1,4 @@
-import type { R2Bucket, R2Object } from "./types.ts";
+import type { R2Bucket, R2Object, R2ObjectBody } from "./types.ts";
 
 export const DRIVE_PREFIX = "drive/";
 const DELETION_MARKER = "takos-storage-deleting";
@@ -38,15 +38,28 @@ function driveKey(path: string): string {
   return `${DRIVE_PREFIX}${path}`;
 }
 
-export async function getDriveObject(
-  bucket: R2Bucket,
+function requireDriveObject<T extends R2Object>(
+  object: T | null,
   path: string,
-): Promise<R2Object> {
-  const object = await bucket.get(driveKey(path));
+): T {
   if (!object || isDriveDeletionTombstone(object)) {
     throw new DriveOperationError("not_found", `file not found: ${path}`);
   }
   return object;
+}
+
+export async function headDriveObject(
+  bucket: R2Bucket,
+  path: string,
+): Promise<R2Object> {
+  return requireDriveObject(await bucket.head(driveKey(path)), path);
+}
+
+export async function getDriveObject(
+  bucket: R2Bucket,
+  path: string,
+): Promise<R2ObjectBody> {
+  return requireDriveObject(await bucket.get(driveKey(path)), path);
 }
 
 /**
