@@ -736,11 +736,14 @@ export function storageConsoleHtml(): string {
     .brand .brand-text { display: none; }
     .text-btn { min-height: 40px; padding: 8px 10px; }
     .lang-btn { height: 40px; }
+    .tray-retry { min-height: 40px; padding: 8px 12px; }
     .seg { height: 40px; }
     .kebab { width: 40px; height: 40px; }
     .tray { bottom: 84px; }
   }
   @media (max-width: 640px) {
+    header.app { flex-wrap: wrap; }
+    .search { order: 3; flex: 1 0 100%; max-width: none; }
     .list-head, .row { grid-template-columns: minmax(0,1fr) 92px 44px; }
     .list-head .sortable.col-size, .row-size { display: none; }
     .cards { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
@@ -770,7 +773,7 @@ export function storageConsoleHtml(): string {
     <div class="header-actions">
       <span class="user-chip" id="user-chip" hidden><span class="avatar" id="user-avatar"></span><span class="user-name" id="user-name"></span></span>
       <button type="button" class="text-btn" id="logout" hidden data-i18n="logout">${CATALOGS.en.logout}</button>
-      <button id="lang-toggle" class="lang-btn" type="button" aria-pressed="false" aria-label="${CATALOGS.en.switchLang}" title="${CATALOGS.en.switchLang}">EN</button>
+      <button id="lang-toggle" class="lang-btn" type="button" aria-label="${CATALOGS.en.switchLang}" title="${CATALOGS.en.switchLang}">EN</button>
       <button id="theme-toggle" class="icon-btn" type="button" data-i18n-label="toggleTheme" aria-label="${CATALOGS.en.toggleTheme}"></button>
     </div>
   </header>
@@ -963,7 +966,6 @@ export function storageConsoleHtml(): string {
   function paintLang() {
     if (!langBtn) return;
     langBtn.textContent = lang.toUpperCase();
-    langBtn.setAttribute("aria-pressed", String(lang === "ja"));
     langBtn.setAttribute("aria-label", t("switchLang"));
     langBtn.setAttribute("title", t("switchLang"));
   }
@@ -2042,7 +2044,7 @@ export function storageConsoleHtml(): string {
         renderTrayHeader();
         toast(error && error.status === 412 ? t("errConflict") : t("errUpload", { name: entry.name }));
       }
-      if (onSettled) onSettled(false);
+      if (onSettled) onSettled(false, error && error.status);
     });
   }
   document.getElementById("tray-close").addEventListener("click", function () {
@@ -2087,7 +2089,7 @@ export function storageConsoleHtml(): string {
       };
       retryBtn.addEventListener("click", function () {
         if (entry.dismissed || entry.status !== "failed" || !entry.file) return;
-        startUploadEntry(entry, function (ok) { if (ok) load(); });
+        startUploadEntry(entry, function (ok, status) { if (ok || status === 412) load(); });
       });
       uploadEntries.push(entry);
       trayList.appendChild(li);
@@ -2134,6 +2136,24 @@ export function storageConsoleHtml(): string {
   var nameDialogNote = document.getElementById("name-dialog-note");
   var nameMode = null; // "folder" | "rename"
   var actionTarget = null;
+  var nameOpener = null;
+  var moveOpener = null;
+  var deleteOpener = null;
+
+  function restoreDialogFocus(opener) {
+    if (opener && typeof opener.focus === "function" && (typeof opener.isConnected !== "boolean" || opener.isConnected)) {
+      opener.focus();
+    } else if (mainEl && typeof mainEl.focus === "function") {
+      mainEl.focus();
+    }
+  }
+  if (nameDialog) {
+    nameDialog.addEventListener("close", function () {
+      var opener = nameOpener;
+      nameOpener = null;
+      restoreDialogFocus(opener);
+    });
+  }
 
   function setNameError(message) {
     if (nameError) {
@@ -2154,9 +2174,11 @@ export function storageConsoleHtml(): string {
   document.querySelectorAll("[data-new]").forEach(function (el) {
     el.addEventListener("click", function () {
       var mode = el.getAttribute("data-new");
+      var trigger = menuAnchor;
       closeMenus(false);
       if (mode === "upload") { fileInput.click(); return; }
       nameMode = "folder";
+      nameOpener = trigger || document.activeElement;
       nameDialogTitle.textContent = t("newFolderTitle");
       nameDialogNote.hidden = true;
       nameInput.value = "";
@@ -2170,9 +2192,23 @@ export function storageConsoleHtml(): string {
   var deleteDialog = document.getElementById("delete-dialog");
   var deleteBody = document.getElementById("delete-body");
   var deleteConfirm = document.getElementById("delete-confirm");
+  if (deleteDialog) {
+    deleteDialog.addEventListener("close", function () {
+      var opener = deleteOpener;
+      deleteOpener = null;
+      restoreDialogFocus(opener);
+    });
+  }
   var cleanupDialog = document.getElementById("cleanup-dialog");
   var folderResultDialog = document.getElementById("folder-result-dialog");
   var moveDialog = document.getElementById("move-dialog");
+  if (moveDialog) {
+    moveDialog.addEventListener("close", function () {
+      var opener = moveOpener;
+      moveOpener = null;
+      restoreDialogFocus(opener);
+    });
+  }
   var moveForm = document.getElementById("move-form");
   var moveItemPrompt = document.getElementById("move-dialog-item");
   var moveDialogNote = document.getElementById("move-dialog-note");
@@ -2240,7 +2276,8 @@ export function storageConsoleHtml(): string {
   }
   if (moveFolderSelect) moveFolderSelect.addEventListener("change", syncMoveCustom);
   if (moveCustomInput) moveCustomInput.addEventListener("input", function () { setMoveError(""); });
-  function openMoveDialog(item) {
+  function openMoveDialog(item, trigger) {
+    moveOpener = trigger || document.activeElement;
     var currentParent = parentFolderOf(item);
     if (moveItemPrompt) moveItemPrompt.textContent = t("moveItemPrompt", { name: item.name });
     if (moveDialogNote) {
@@ -2290,6 +2327,7 @@ export function storageConsoleHtml(): string {
       actionTarget = item;
       if (action === "rename") {
         nameMode = "rename";
+        nameOpener = trigger || document.activeElement;
         nameDialogTitle.textContent = t("renameTitle");
         if (item.type === "folder") {
           nameDialogNote.textContent = t("renameFolderBody", { count: actionEntries.length });
@@ -2304,8 +2342,9 @@ export function storageConsoleHtml(): string {
         nameDialog.showModal();
         nameInput.select();
       } else if (action === "move") {
-        openMoveDialog(item);
+        openMoveDialog(item, trigger);
       } else if (action === "delete") {
+        deleteOpener = trigger || document.activeElement;
         deleteBody.textContent = item.type === "folder"
           ? t("deleteFolderBody", { name: item.name, count: actionEntries.length })
           : t("deleteBody", { name: item.name });

@@ -266,7 +266,9 @@ class FakeEl {
     this.open = true;
   }
   close() {
+    if (!this.open) return;
     this.open = false;
+    this.dispatch("close");
   }
   getBoundingClientRect() {
     return { left: 0, top: 0, bottom: 0 };
@@ -481,7 +483,7 @@ async function mount(opts: { pageSize?: number } = {}) {
   runInContext(
     script.replace(
       "\n  boot();",
-      `\n  globalThis.ctrl = { state: state, items: visibleItems, render: render, uploadFiles: uploadFiles, openItem: openItem, openPreview: openPreview, closePreview: closePreview, selectMenu: function(item) { menuTarget = item; } };\n  boot();`,
+      `\n  globalThis.ctrl = { state: state, items: visibleItems, render: render, uploadFiles: uploadFiles, openItem: openItem, openPreview: openPreview, closePreview: closePreview, selectMenu: function(item, anchor) { menuTarget = item; menuAnchor = anchor || null; } };\n  boot();`,
     ),
     context,
   );
@@ -507,7 +509,7 @@ async function mount(opts: { pageSize?: number } = {}) {
     openItem: (item: unknown) => void;
     openPreview: (item: unknown) => void;
     closePreview: (restore?: boolean) => void;
-    selectMenu: (item: unknown) => void;
+    selectMenu: (item: unknown, anchor?: FakeEl) => void;
   };
   await until(() => !ctrl.state.loading);
   return {
@@ -523,9 +525,17 @@ async function mount(opts: { pageSize?: number } = {}) {
 }
 
 describe("Takos Storage Wave 2 UI/UX improvements", () => {
-  test("HTML includes language toggle, truncated search banner, move menu/dialog, and upload progress", () => {
+  test("HTML includes language toggle, truncated search banner, move menu/dialog, upload progress, and mobile header wrapping", () => {
     const html = storageConsoleHtml();
     expect(html).toContain('id="lang-toggle" class="lang-btn"');
+    expect(html).not.toContain(
+      'id="lang-toggle" class="lang-btn" type="button" aria-pressed',
+    );
+    expect(html).toContain("header.app { flex-wrap: wrap; }");
+    expect(html).toContain(
+      ".search { order: 3; flex: 1 0 100%; max-width: none; }",
+    );
+    expect(html).toContain(".tray-retry { min-height: 40px;");
     expect(html).toContain(
       'id="search-truncated" class="search-notice" role="status"',
     );
@@ -539,12 +549,12 @@ describe("Takos Storage Wave 2 UI/UX improvements", () => {
     expect(html).toContain('data-i18n-label="breadcrumbLabel"');
   });
 
-  test("language toggle switches EN <-> JA live, persists takos-lang, and updates aria-pressed/labels", async () => {
+  test("language toggle switches EN <-> JA live, persists takos-lang, and updates dynamic aria-label without aria-pressed", async () => {
     const m = await mount();
     const langBtn = m.doc.getElementById("lang-toggle");
     expect(m.doc.documentElement.lang).toBe("en");
     expect(langBtn.textContent).toBe("EN");
-    expect(langBtn.getAttribute("aria-pressed")).toBe("false");
+    expect(langBtn.getAttribute("aria-pressed")).toBeNull();
     expect(langBtn.getAttribute("aria-label")).toBe(
       "Switch language to Japanese",
     );
@@ -553,7 +563,7 @@ describe("Takos Storage Wave 2 UI/UX improvements", () => {
     expect(m.doc.documentElement.lang).toBe("ja");
     expect(m.storage.get("takos-lang")).toBe("ja");
     expect(langBtn.textContent).toBe("JA");
-    expect(langBtn.getAttribute("aria-pressed")).toBe("true");
+    expect(langBtn.getAttribute("aria-pressed")).toBeNull();
     expect(langBtn.getAttribute("aria-label")).toBe("英語に切り替え");
     expect(m.doc.getElementById("q").getAttribute("placeholder")).toBe(
       "ドライブ内を検索",
@@ -566,7 +576,7 @@ describe("Takos Storage Wave 2 UI/UX improvements", () => {
     expect(m.doc.documentElement.lang).toBe("en");
     expect(m.storage.get("takos-lang")).toBe("en");
     expect(langBtn.textContent).toBe("EN");
-    expect(langBtn.getAttribute("aria-pressed")).toBe("false");
+    expect(langBtn.getAttribute("aria-pressed")).toBeNull();
   });
 
   test("upload tray shows live N/M progress, retries failed file with CAS if-none-match *, and clears File refs on dismiss", async () => {
@@ -607,13 +617,39 @@ describe("Takos Storage Wave 2 UI/UX improvements", () => {
     expect(m.bucket.objects.has("drive/bad.txt")).toBe(true);
     expect(trayList.querySelectorAll(".tray-retry")).toHaveLength(0);
 
+    // Retrying a file that now conflicts (412) reloads the drive list to match the conflict toast.
+    m.setFailPut("conflict.txt");
+    m.ctrl.state.path = "";
+    m.ctrl.uploadFiles([
+      new File(["v1"], "conflict.txt", { type: "text/plain" }),
+    ]);
+    await until(() => trayList.querySelectorAll(".tray-retry").length === 1);
+    const conflictRetry = trayList.querySelectorAll(".tray-retry")[0]!;
+    await m.bucket.put("drive/conflict.txt", "concurrent writer", {
+      httpMetadata: { contentType: "text/plain" },
+    });
+    m.setFailPut(null);
+    const listsBeforeConflictRetry = m.requests.filter((r) =>
+      r.path.startsWith("/api/drive/list"),
+    ).length;
+    conflictRetry.click();
+    await until(
+      () =>
+        !m.ctrl.state.loading &&
+        m.requests.filter((r) => r.path.startsWith("/api/drive/list")).length >
+          listsBeforeConflictRetry,
+    );
+    expect(m.ctrl.state.files.some((f) => f.path === "conflict.txt")).toBe(
+      true,
+    );
+
     // Fail another file and dismiss tray -> File reference is released so stale retry button cannot upload.
     m.setFailPut("discard.txt");
     m.ctrl.uploadFiles([
       new File(["nope"], "discard.txt", { type: "text/plain" }),
     ]);
-    await until(() => trayList.querySelectorAll(".tray-retry").length === 1);
-    const staleRetry = trayList.querySelectorAll(".tray-retry")[0]!;
+    await until(() => trayList.querySelectorAll(".tray-retry").length === 2);
+    const staleRetry = trayList.querySelectorAll(".tray-retry")[1]!;
     m.doc.getElementById("tray-close").click();
     expect(m.doc.getElementById("tray").classList.contains("open")).toBe(false);
     expect(m.doc.getElementById("tray-progress").textContent).toBe("");
@@ -811,5 +847,31 @@ describe("Takos Storage Wave 2 UI/UX improvements", () => {
     expect(prevented).toBe(true);
     expect(m.doc.activeElement).toBe(m.doc.getElementById("preview-close"));
     m.ctrl.closePreview(false);
+  });
+
+  test("move dialog restores focus to connected opener on close and falls back to #main when detached", async () => {
+    const m = await mount();
+    const moveAction = m.doc
+      .getElementById("item-menu")
+      .querySelector('[data-action="move"]')!;
+    const moveDialog = m.doc.getElementById("move-dialog");
+    const note = m.ctrl.items().find((i) => i.name === "note.txt")!;
+
+    const opener = m.doc.createElement("button");
+    m.ctrl.selectMenu(note, opener);
+    moveAction.click();
+    expect(moveDialog.open).toBe(true);
+    m.doc.activeElement = m.doc.body;
+    moveDialog.close();
+    expect(m.doc.activeElement).toBe(opener);
+
+    const detached = m.doc.createElement("button");
+    m.ctrl.selectMenu(note, detached);
+    moveAction.click();
+    expect(moveDialog.open).toBe(true);
+    detached.isConnected = false;
+    m.doc.activeElement = m.doc.body;
+    moveDialog.close();
+    expect(m.doc.activeElement).toBe(m.doc.getElementById("main"));
   });
 });
