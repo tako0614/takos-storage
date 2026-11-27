@@ -30,6 +30,7 @@ const CATALOGS = {
     newButton: "New",
     actionUpload: "Upload files",
     actionNewFolder: "New folder",
+    navLabel: "Drive navigation",
     navFiles: "My Drive",
     navRecent: "Recent",
     usage: "{count} files · {size}",
@@ -65,6 +66,10 @@ const CATALOGS = {
     colName: "Name",
     colSize: "Size",
     colUpdated: "Last modified",
+    sortAsc: "ascending",
+    sortDesc: "descending",
+    sortBy: "{label}, sorted {dir}",
+    sortAction: "Sort by {label}",
     folder: "Folder",
     folderCount: "{count} items",
     itemMenu: "More actions",
@@ -142,6 +147,7 @@ const CATALOGS = {
     newButton: "新規",
     actionUpload: "ファイルをアップロード",
     actionNewFolder: "新しいフォルダ",
+    navLabel: "ドライブのナビゲーション",
     navFiles: "マイドライブ",
     navRecent: "最近",
     usage: "{count} 個のファイル · {size}",
@@ -177,6 +183,10 @@ const CATALOGS = {
     colName: "名前",
     colSize: "サイズ",
     colUpdated: "最終更新",
+    sortAsc: "昇順",
+    sortDesc: "降順",
+    sortBy: "{label}（{dir}で並び替え中）",
+    sortAction: "{label}で並び替え",
     folder: "フォルダ",
     folderCount: "{count} 件",
     itemMenu: "その他の操作",
@@ -625,7 +635,7 @@ export function storageConsoleHtml(): string {
   .drop-overlay.active { display: flex; }
 
   .toast {
-    position: fixed; left: 20px; bottom: 20px; z-index: 60;
+    position: fixed; left: 20px; bottom: 20px; z-index: 80;
     padding: 12px 20px; border-radius: 10px; font-size: 14px;
     background: #1f2937; color: #f9fafb; box-shadow: var(--shadow-lg);
     opacity: 0; transform: translateY(8px); transition: opacity .18s, transform .18s;
@@ -688,14 +698,14 @@ export function storageConsoleHtml(): string {
     </div>
   </header>
 
-  <nav class="mobile-nav" aria-label="Drive navigation">
+  <nav class="mobile-nav" data-i18n-label="navLabel" aria-label="${CATALOGS.en.navLabel}">
     <button type="button" class="nav-item" data-nav="files" aria-pressed="true">
       <span class="nav-icon">${svg(ICON_FOLDER, 16)}</span><span data-i18n="navFiles">${CATALOGS.en.navFiles}</span>
     </button>
     <button type="button" class="nav-item" data-nav="recent" aria-pressed="false">
       <span class="nav-icon">${svg(ICON_CLOCK, 16)}</span><span data-i18n="navRecent">${CATALOGS.en.navRecent}</span>
     </button>
-    <span class="mobile-usage"><span id="mobile-usage-text"></span><span class="warn" id="mobile-usage-truncated" hidden aria-hidden="true">•</span></span>
+    <span class="mobile-usage"><span id="mobile-usage-text"></span><span class="warn" id="mobile-usage-truncated" hidden role="img" data-i18n-label="usageTruncated" aria-label="${CATALOGS.en.usageTruncated}" title="${CATALOGS.en.usageTruncated}">•</span></span>
   </nav>
 
   <div class="layout">
@@ -703,7 +713,7 @@ export function storageConsoleHtml(): string {
       <button type="button" class="new-btn" id="new-btn" aria-haspopup="menu" aria-expanded="false">
         ${svg(ICON_PLUS, 22)}<span data-i18n="newButton">${CATALOGS.en.newButton}</span>
       </button>
-      <nav id="side-nav" aria-label="Drive navigation">
+      <nav id="side-nav" data-i18n-label="navLabel" aria-label="${CATALOGS.en.navLabel}">
         <button type="button" class="nav-item" data-nav="files" aria-pressed="true">
           <span class="nav-icon">${svg(ICON_FOLDER, 18)}</span><span data-i18n="navFiles">${CATALOGS.en.navFiles}</span>
         </button>
@@ -735,9 +745,9 @@ export function storageConsoleHtml(): string {
         <ul id="pending-list" class="pending-list"></ul>
       </section>
       <div class="list-head" id="list-head">
-        <button type="button" class="sortable" data-sort="name" aria-sort="none"><span data-i18n="colName">${CATALOGS.en.colName}</span><span class="sort-arrow" data-arrow="name" aria-hidden="true"></span></button>
-        <button type="button" class="sortable col-size" data-sort="size" aria-sort="none"><span data-i18n="colSize">${CATALOGS.en.colSize}</span><span class="sort-arrow" data-arrow="size" aria-hidden="true"></span></button>
-        <button type="button" class="sortable" data-sort="uploaded" aria-sort="descending"><span data-i18n="colUpdated">${CATALOGS.en.colUpdated}</span><span class="sort-arrow" data-arrow="uploaded" aria-hidden="true">▼</span></button>
+        <button type="button" class="sortable" data-sort="name" aria-pressed="false" aria-label="${CATALOGS.en.sortAction.replace("{label}", CATALOGS.en.colName)}"><span data-i18n="colName">${CATALOGS.en.colName}</span><span class="sort-arrow" data-arrow="name" aria-hidden="true"></span></button>
+        <button type="button" class="sortable col-size" data-sort="size" aria-pressed="false" aria-label="${CATALOGS.en.sortAction.replace("{label}", CATALOGS.en.colSize)}"><span data-i18n="colSize">${CATALOGS.en.colSize}</span><span class="sort-arrow" data-arrow="size" aria-hidden="true"></span></button>
+        <button type="button" class="sortable" data-sort="uploaded" aria-pressed="true" aria-label="${CATALOGS.en.sortBy.replace("{label}", CATALOGS.en.colUpdated).replace("{dir}", CATALOGS.en.sortDesc)}"><span data-i18n="colUpdated">${CATALOGS.en.colUpdated}</span><span class="sort-arrow" data-arrow="uploaded" aria-hidden="true">▼</span></button>
         <span></span>
       </div>
       <ul class="rows" id="rows"></ul>
@@ -896,6 +906,8 @@ export function storageConsoleHtml(): string {
   var splashEl = document.getElementById("splash");
   var appEl = document.getElementById("app");
   var fabEl = document.getElementById("fab");
+  var mainEl = document.getElementById("main");
+  var tray = document.getElementById("tray");
   var rowsEl = document.getElementById("rows");
   var cardsEl = document.getElementById("cards");
   var listHeadEl = document.getElementById("list-head");
@@ -1346,9 +1358,18 @@ export function storageConsoleHtml(): string {
     document.querySelectorAll("[data-view]").forEach(function (el) {
       el.setAttribute("aria-pressed", String(el.getAttribute("data-view") === state.view));
     });
+    var SORT_LABEL_KEY = { name: "colName", size: "colSize", uploaded: "colUpdated" };
     document.querySelectorAll("[data-sort]").forEach(function (el) {
       var key = el.getAttribute("data-sort");
-      el.setAttribute("aria-sort", state.sort.key === key ? (state.sort.dir === "asc" ? "ascending" : "descending") : "none");
+      var active = state.sort.key === key;
+      var label = t(SORT_LABEL_KEY[key] || key);
+      el.setAttribute("aria-pressed", String(active));
+      el.setAttribute(
+        "aria-label",
+        active
+          ? t("sortBy", { label: label, dir: t(state.sort.dir === "asc" ? "sortAsc" : "sortDesc") })
+          : t("sortAction", { label: label })
+      );
     });
     document.querySelectorAll(".sort-arrow").forEach(function (el) {
       var key = el.getAttribute("data-arrow");
@@ -1421,7 +1442,7 @@ export function storageConsoleHtml(): string {
   }
 
   // ---- Open (navigate / preview) ----
-  function openItem(item) {
+  function openItem(item, trigger) {
     if (item.type === "folder") {
       state.nav = "files";
       state.query = "";
@@ -1430,13 +1451,13 @@ export function storageConsoleHtml(): string {
       render();
       return;
     }
-    openPreview(item);
+    openPreview(item, trigger);
   }
   document.addEventListener("click", function (e) {
     var opener = e.target.closest ? e.target.closest("[data-open]") : null;
     if (!opener) return;
     var item = currentVisible[Number(opener.getAttribute("data-open"))];
-    if (item) openItem(item);
+    if (item) openItem(item, opener);
   });
 
   // ---- Preview ----
@@ -1459,15 +1480,20 @@ export function storageConsoleHtml(): string {
     if (wasOpen) {
       appEl.inert = false;
       fabEl.inert = false;
+      if (tray) tray.inert = false;
       var opener = previewOpener;
       previewOpener = null;
-      if (restoreFocus !== false && opener && typeof opener.focus === "function" && (typeof opener.isConnected !== "boolean" || opener.isConnected)) {
-        opener.focus();
+      if (restoreFocus !== false) {
+        if (opener && typeof opener.focus === "function" && (typeof opener.isConnected !== "boolean" || opener.isConnected)) {
+          opener.focus();
+        } else if (mainEl && typeof mainEl.focus === "function") {
+          mainEl.focus();
+        }
       }
     }
   }
-  function openPreview(item) {
-    var opener = previewEl.classList.contains("open") ? previewOpener : document.activeElement;
+  function openPreview(item, trigger) {
+    var opener = trigger || (previewEl.classList.contains("open") ? previewOpener : document.activeElement);
     closePreview(false);
     previewOpener = opener;
     var request = previewRequest;
@@ -1484,6 +1510,7 @@ export function storageConsoleHtml(): string {
     previewEl.classList.add("open");
     appEl.inert = true;
     fabEl.inert = true;
+    if (tray) tray.inert = true;
     if (previewCloseBtn && typeof previewCloseBtn.focus === "function") previewCloseBtn.focus();
     else if (typeof previewEl.focus === "function") previewEl.focus();
     var kind = kindOf(item.name);
@@ -1603,7 +1630,9 @@ export function storageConsoleHtml(): string {
   }
   [newMenu, itemMenu].forEach(function (menu) {
     menu.addEventListener("keydown", function (e) {
-      if (!menu.classList.contains("open") || typeof menu.querySelectorAll !== "function") return;
+      if (!menu.classList.contains("open")) return;
+      if (e.key === "Tab") { closeMenus(false); return; }
+      if (typeof menu.querySelectorAll !== "function") return;
       if (e.key !== "ArrowDown" && e.key !== "ArrowUp" && e.key !== "Home" && e.key !== "End") return;
       var items = Array.prototype.filter.call(menu.querySelectorAll('[role="menuitem"]'), function (el) {
         return !el.hidden && !el.disabled;
@@ -1642,18 +1671,24 @@ export function storageConsoleHtml(): string {
       }
       return;
     }
-    if (e.key === "Tab" && previewEl.classList.contains("open") && typeof previewEl.querySelectorAll === "function") {
-      var focusable = Array.prototype.filter.call(
-        previewEl.querySelectorAll("button:not([disabled]):not([hidden]), a[href], [tabindex]:not([tabindex='-1'])"),
-        function (el) { return !el.hidden; }
-      );
-      if (!focusable.length) { e.preventDefault(); previewEl.focus(); return; }
-      var first = focusable[0], last = focusable[focusable.length - 1];
-      var inside = typeof previewEl.contains === "function" && previewEl.contains(document.activeElement);
-      if (e.shiftKey) {
-        if (!inside || document.activeElement === first) { e.preventDefault(); last.focus(); }
-      } else if (!inside || document.activeElement === last) {
-        e.preventDefault(); first.focus();
+    if (e.key === "Tab") {
+      if (newMenu.classList.contains("open") || itemMenu.classList.contains("open")) {
+        closeMenus(false);
+        return;
+      }
+      if (previewEl.classList.contains("open") && typeof previewEl.querySelectorAll === "function") {
+        var focusable = Array.prototype.filter.call(
+          previewEl.querySelectorAll("button:not([disabled]):not([hidden]), a[href], [tabindex]:not([tabindex='-1'])"),
+          function (el) { return !el.hidden; }
+        );
+        if (!focusable.length) { e.preventDefault(); previewEl.focus(); return; }
+        var first = focusable[0], last = focusable[focusable.length - 1];
+        var inside = typeof previewEl.contains === "function" && previewEl.contains(document.activeElement);
+        if (e.shiftKey) {
+          if (!inside || document.activeElement === first) { e.preventDefault(); last.focus(); }
+        } else if (!inside || document.activeElement === last) {
+          e.preventDefault(); first.focus();
+        }
       }
     }
   });
@@ -1665,6 +1700,10 @@ export function storageConsoleHtml(): string {
     if (!kebab) return;
     e.preventDefault();
     e.stopPropagation();
+    if (itemMenu.classList.contains("open") && menuAnchor === kebab) {
+      closeMenus(true);
+      return;
+    }
     var item = currentVisible[Number(kebab.getAttribute("data-item"))];
     if (!item || folderBusy) return;
     menuTarget = item;
@@ -1726,7 +1765,7 @@ export function storageConsoleHtml(): string {
     }, 150);
   });
   searchInput.addEventListener("keydown", function (e) {
-    if (e.key === "Escape" && (searchInput.value || state.query)) {
+    if (e.key === "Escape" && !e.isComposing && e.keyCode !== 229 && (searchInput.value || state.query)) {
       e.preventDefault();
       clearSearch(true);
     }
@@ -1735,8 +1774,11 @@ export function storageConsoleHtml(): string {
     searchClearBtn.addEventListener("click", function () { clearSearch(true); });
   }
   document.addEventListener("keydown", function (e) {
-    if (e.key === "/" && document.activeElement !== searchInput &&
+    if (e.key === "/" && !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing &&
+        document.activeElement !== searchInput &&
         !previewEl.classList.contains("open") &&
+        !newMenu.classList.contains("open") &&
+        !itemMenu.classList.contains("open") &&
         !(typeof document.querySelector === "function" && document.querySelector("dialog[open]")) &&
         !(document.activeElement && /INPUT|TEXTAREA/.test(document.activeElement.tagName))) {
       e.preventDefault();
@@ -1746,7 +1788,6 @@ export function storageConsoleHtml(): string {
 
   // ---- Upload ----
   var fileInput = document.getElementById("file-input");
-  var tray = document.getElementById("tray");
   var trayList = document.getElementById("tray-list");
   document.getElementById("tray-close").addEventListener("click", function () {
     tray.classList.remove("open");
@@ -1789,7 +1830,6 @@ export function storageConsoleHtml(): string {
   });
 
   // Drag & drop upload (files view only).
-  var mainEl = document.getElementById("main");
   var dropOverlay = document.getElementById("drop-overlay");
   var dragDepth = 0;
   mainEl.addEventListener("dragenter", function (e) {
@@ -1862,9 +1902,10 @@ export function storageConsoleHtml(): string {
     el.addEventListener("click", function () {
       var action = el.getAttribute("data-action");
       var item = menuTarget;
+      var trigger = menuAnchor;
       closeMenus(false);
       if (!item || folderBusy) return;
-      if (action === "open") { openItem(item); return; }
+      if (action === "open") { openItem(item, trigger); return; }
       if (action === "download") { download(item); return; }
       actionEntries = item.type === "folder" ? folderSnapshot(item) : null;
       if (item.type === "folder" && !actionEntries) { folderUnavailable(); return; }

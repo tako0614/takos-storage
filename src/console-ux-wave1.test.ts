@@ -177,12 +177,40 @@ class FakeEl {
     return [this, ...this.children.flatMap((c) => c.all())];
   }
 
-  querySelector() {
-    return new FakeEl(this.doc);
+  querySelector(selector: string): FakeEl | null {
+    return this.querySelectorAll(selector)[0] ?? null;
   }
 
-  querySelectorAll() {
-    return [] as FakeEl[];
+  querySelectorAll(selector: string): FakeEl[] {
+    const descendants = this.all().filter((el) => el !== this);
+    if (selector === '[role="menuitem"]') {
+      return descendants.filter((el) => el.getAttribute("role") === "menuitem");
+    }
+    if (selector.startsWith(".menu-item")) {
+      return descendants.filter((el) => {
+        if (!el.classes.has("menu-item")) return false;
+        if (selector.includes(":not([hidden])") && el.hidden) return false;
+        if (selector.includes(":not([disabled])") && el.disabled) return false;
+        return true;
+      });
+    }
+    const dataAction = /^\[data-action="([^"]+)"\]$/u.exec(selector);
+    if (dataAction) {
+      return descendants.filter(
+        (el) => el.getAttribute("data-action") === dataAction[1],
+      );
+    }
+    if (selector === "[data-action]") {
+      return descendants.filter(
+        (el) => el.getAttribute("data-action") !== null,
+      );
+    }
+    return descendants;
+  }
+
+  closest(selector: string): FakeEl | null {
+    if (selector === ".kebab" && this.classes.has("kebab")) return this;
+    return null;
   }
 
   contains(other: unknown) {
@@ -212,8 +240,34 @@ class FakeEl {
 class FakeDoc {
   nodes = new Map<string, FakeEl>();
   activeElement: FakeEl | null = null;
-  docListeners = new Map<string, Listener[]>();
+  docListeners = new Map<string, Array<{ fn: Listener; capture: boolean }>>();
   documentElement = { lang: "en", dataset: { theme: "light" } };
+  sortButtons: FakeEl[] = [];
+
+  constructor() {
+    for (const key of ["name", "size", "uploaded"]) {
+      const btn = new FakeEl(this, "BUTTON");
+      btn.setAttribute("data-sort", key);
+      btn.classes.add("sortable");
+      this.sortButtons.push(btn);
+    }
+    const newMenu = this.getElementById("new-menu");
+    for (const action of ["upload", "folder"]) {
+      const item = new FakeEl(this, "BUTTON");
+      item.setAttribute("role", "menuitem");
+      item.setAttribute("data-new", action);
+      item.classes.add("menu-item");
+      newMenu.appendChild(item);
+    }
+    const itemMenu = this.getElementById("item-menu");
+    for (const action of ["open", "download", "rename", "delete"]) {
+      const item = new FakeEl(this, "BUTTON");
+      item.setAttribute("role", "menuitem");
+      item.setAttribute("data-action", action);
+      item.classes.add("menu-item");
+      itemMenu.appendChild(item);
+    }
+  }
 
   getElementById = (id: string): FakeEl => {
     if (!this.nodes.has(id)) {
@@ -224,15 +278,34 @@ class FakeDoc {
   };
 
   querySelector = () => null;
-  querySelectorAll = () => [] as FakeEl[];
+  querySelectorAll = (selector: string): FakeEl[] => {
+    if (selector === "[data-sort]") return this.sortButtons;
+    return [];
+  };
 
-  addEventListener = (type: string, fn: Listener) => {
-    this.docListeners.set(type, [...(this.docListeners.get(type) ?? []), fn]);
+  addEventListener = (type: string, fn: Listener, capture = false) => {
+    this.docListeners.set(type, [
+      ...(this.docListeners.get(type) ?? []),
+      { fn, capture: Boolean(capture) },
+    ]);
   };
 
   dispatchDoc = (type: string, extra: Record<string, unknown> = {}) => {
-    for (const fn of this.docListeners.get(type) ?? []) {
-      fn({ preventDefault() {}, stopPropagation() {}, ...extra });
+    let stopped = false;
+    const all = this.docListeners.get(type) ?? [];
+    const ordered = [
+      ...all.filter((entry) => entry.capture),
+      ...all.filter((entry) => !entry.capture),
+    ];
+    for (const entry of ordered) {
+      if (stopped) break;
+      entry.fn({
+        preventDefault() {},
+        stopPropagation() {
+          stopped = true;
+        },
+        ...extra,
+      });
     }
   };
 
@@ -259,6 +332,9 @@ async function mount(opts: { failList?: boolean } = {}) {
     httpMetadata: { contentType: "application/x-directory" },
   });
   await bucket.put("drive/note.txt", "hello storage", {
+    httpMetadata: { contentType: "text/plain" },
+  });
+  await bucket.put(`drive/a"b'c<d>&e.txt`, "special chars", {
     httpMetadata: { contentType: "text/plain" },
   });
   const env: Env = { BUCKET: bucket, ALLOW_UNAUTHENTICATED_DRIVE: "1" };
@@ -362,6 +438,20 @@ describe("Takos Storage Wave 1 UI/UX improvements", () => {
     );
     expect(html).toContain('id="preview-close" data-i18n-label="close"');
     expect(html).toContain('id="tray-close" data-i18n-label="close"');
+    expect(html).not.toContain("aria-sort");
+    expect(html).toContain(
+      'data-sort="uploaded" aria-pressed="true" aria-label="Last modified, sorted descending"',
+    );
+    expect(html).toContain(
+      '<nav class="mobile-nav" data-i18n-label="navLabel" aria-label="Drive navigation">',
+    );
+    expect(html).toContain(
+      '<nav id="side-nav" data-i18n-label="navLabel" aria-label="Drive navigation">',
+    );
+    expect(html).toContain(
+      'id="mobile-usage-truncated" hidden role="img" data-i18n-label="usageTruncated"',
+    );
+    expect(html).toMatch(/\.toast\s*\{[^}]*z-index:\s*80;/u);
   });
 
   test("list load failure shows an inline Retry button that recovers on click", async () => {
@@ -419,7 +509,7 @@ describe("Takos Storage Wave 1 UI/UX improvements", () => {
     expect(input.getAttribute("aria-invalid")).toBeNull();
   });
 
-  test("preview marks background inert, moves focus inside, and restores focus on close", async () => {
+  test("preview marks app/fab/tray inert (keeping toast active), restores opener or falls back to main", async () => {
     const m = await mount();
     const opener = m.doc.createElement("button");
     opener.focus();
@@ -429,21 +519,56 @@ describe("Takos Storage Wave 1 UI/UX improvements", () => {
     m.ctrl.openPreview(note);
     expect(m.doc.getElementById("app").inert).toBe(true);
     expect(m.doc.getElementById("fab").inert).toBe(true);
+    expect(m.doc.getElementById("tray").inert).toBe(true);
+    expect(m.doc.getElementById("toast").inert).toBe(false);
     expect(m.doc.activeElement).toBe(m.doc.getElementById("preview-close"));
 
     m.ctrl.closePreview(true);
     expect(m.doc.getElementById("app").inert).toBe(false);
     expect(m.doc.getElementById("fab").inert).toBe(false);
+    expect(m.doc.getElementById("tray").inert).toBe(false);
     expect(m.doc.activeElement).toBe(opener);
+
+    // If opener is detached before close, focus falls back to #main.
+    const detached = m.doc.createElement("button");
+    detached.focus();
+    m.ctrl.openPreview(note);
+    detached.isConnected = false;
+    m.ctrl.closePreview(true);
+    expect(m.doc.activeElement).toBe(m.doc.getElementById("main"));
   });
 
-  test("search clear button, Escape clear, refresh button, and descriptive kebab labels work", async () => {
+  test("sort buttons use aria-pressed + localized aria-label without aria-sort", async () => {
+    const m = await mount();
+    const [nameBtn, sizeBtn, uploadedBtn] = m.doc.sortButtons;
+    expect(uploadedBtn!.getAttribute("aria-sort")).toBeNull();
+    expect(uploadedBtn!.getAttribute("aria-pressed")).toBe("true");
+    expect(uploadedBtn!.getAttribute("aria-label")).toBe(
+      "Last modified, sorted descending",
+    );
+    expect(nameBtn!.getAttribute("aria-pressed")).toBe("false");
+    expect(nameBtn!.getAttribute("aria-label")).toBe("Sort by Name");
+
+    nameBtn!.click();
+    expect(nameBtn!.getAttribute("aria-pressed")).toBe("true");
+    expect(nameBtn!.getAttribute("aria-label")).toBe("Name, sorted ascending");
+    expect(uploadedBtn!.getAttribute("aria-pressed")).toBe("false");
+    expect(sizeBtn!.getAttribute("aria-sort")).toBeNull();
+
+    nameBtn!.click();
+    expect(nameBtn!.getAttribute("aria-label")).toBe("Name, sorted descending");
+  });
+
+  test("search clear button, Escape IME guard, / guards, refresh button, and escaped kebab labels work", async () => {
     const m = await mount();
     const rowsHtml = m.doc
       .getElementById("rows")
       .children.map((row) => row.innerHTML)
       .join("\n");
     expect(rowsHtml).toContain('aria-label="More actions for note.txt"');
+    expect(rowsHtml).toContain(
+      'aria-label="More actions for a&quot;b&#39;c&lt;d&gt;&amp;e.txt"',
+    );
 
     const q = m.doc.getElementById("q");
     const qClear = m.doc.getElementById("q-clear");
@@ -455,9 +580,36 @@ describe("Takos Storage Wave 1 UI/UX improvements", () => {
     expect(qClear.hidden).toBe(true);
     expect(m.doc.activeElement).toBe(q);
 
+    // Escape during IME composition must NOT clear #q.
     q.value = "note";
-    q.dispatch("keydown", { key: "Escape" });
+    q.dispatch("keydown", { key: "Escape", isComposing: true });
+    expect(q.value).toBe("note");
+    q.dispatch("keydown", { key: "Escape", keyCode: 229 });
+    expect(q.value).toBe("note");
+    q.dispatch("keydown", { key: "Escape", isComposing: false, keyCode: 27 });
     expect(q.value).toBe("");
+
+    // "/" shortcut respects modifier, IME, and open menu guards.
+    const other = m.doc.createElement("button");
+    other.focus();
+    m.doc.dispatchDoc("keydown", { key: "/", ctrlKey: true });
+    m.doc.dispatchDoc("keydown", { key: "/", metaKey: true });
+    m.doc.dispatchDoc("keydown", { key: "/", altKey: true });
+    m.doc.dispatchDoc("keydown", { key: "/", isComposing: true });
+    expect(m.doc.activeElement).toBe(other);
+
+    m.doc.getElementById("new-menu").classList.add("open");
+    m.doc.dispatchDoc("keydown", { key: "/" });
+    expect(m.doc.activeElement).toBe(other);
+    m.doc.getElementById("new-menu").classList.remove("open");
+
+    m.doc.getElementById("item-menu").classList.add("open");
+    m.doc.dispatchDoc("keydown", { key: "/" });
+    expect(m.doc.activeElement).toBe(other);
+    m.doc.getElementById("item-menu").classList.remove("open");
+
+    m.doc.dispatchDoc("keydown", { key: "/" });
+    expect(m.doc.activeElement).toBe(q);
 
     const beforeRefresh = m.getListCalls();
     m.doc.getElementById("refresh-btn").click();
@@ -465,5 +617,63 @@ describe("Takos Storage Wave 1 UI/UX improvements", () => {
       () => m.getListCalls() > beforeRefresh && !m.ctrl.state.loading,
     );
     expect(m.getListCalls()).toBe(beforeRefresh + 1);
+  });
+
+  test("floating menus support arrow/Home/End nav, close on Tab, toggle on kebab click, and pass kebab trigger to preview", async () => {
+    const m = await mount();
+    const newBtn = m.doc.getElementById("new-btn");
+    const newMenu = m.doc.getElementById("new-menu");
+    const newItems = newMenu.querySelectorAll('[role="menuitem"]');
+    expect(newItems).toHaveLength(2);
+
+    newBtn.click();
+    expect(newMenu.classList.contains("open")).toBe(true);
+    expect(m.doc.activeElement).toBe(newItems[0]!);
+
+    newMenu.dispatch("keydown", { key: "ArrowDown" });
+    expect(m.doc.activeElement).toBe(newItems[1]!);
+    newMenu.dispatch("keydown", { key: "Home" });
+    expect(m.doc.activeElement).toBe(newItems[0]!);
+    newMenu.dispatch("keydown", { key: "End" });
+    expect(m.doc.activeElement).toBe(newItems[1]!);
+    newMenu.dispatch("keydown", { key: "ArrowUp" });
+    expect(m.doc.activeElement).toBe(newItems[0]!);
+
+    // Tab closes the open floating menu.
+    newMenu.dispatch("keydown", { key: "Tab" });
+    expect(newMenu.classList.contains("open")).toBe(false);
+    expect(newBtn.getAttribute("aria-expanded")).toBe("false");
+
+    // Kebab opens item-menu, clicking same kebab toggles it closed, and Open -> Preview restores focus to kebab.
+    const noteIndex = m.ctrl
+      .items()
+      .findIndex((item) => item.name === "note.txt");
+    expect(noteIndex).toBeGreaterThanOrEqual(0);
+    const kebab = m.doc.createElement("button");
+    kebab.classes.add("kebab");
+    kebab.setAttribute("data-item", String(noteIndex));
+    const itemMenu = m.doc.getElementById("item-menu");
+
+    m.doc.dispatchDoc("click", { target: kebab });
+    expect(itemMenu.classList.contains("open")).toBe(true);
+    expect(kebab.getAttribute("aria-expanded")).toBe("true");
+
+    // Second click on same kebab toggles menu closed and restores focus to kebab.
+    m.doc.dispatchDoc("click", { target: kebab });
+    expect(itemMenu.classList.contains("open")).toBe(false);
+    expect(kebab.getAttribute("aria-expanded")).toBe("false");
+    expect(m.doc.activeElement).toBe(kebab);
+
+    // Reopen item-menu and click Open -> Preview opens and closing restores focus to kebab.
+    m.doc.dispatchDoc("click", { target: kebab });
+    const openAction = itemMenu.querySelector('[data-action="open"]');
+    expect(openAction).not.toBeNull();
+    openAction!.click();
+    expect(m.doc.getElementById("preview").classList.contains("open")).toBe(
+      true,
+    );
+    expect(m.doc.getElementById("tray").inert).toBe(true);
+    m.ctrl.closePreview(true);
+    expect(m.doc.activeElement).toBe(kebab);
   });
 });
