@@ -21,8 +21,12 @@ const CATALOGS = {
     signinRedirect: "Redirecting to sign-in…",
     authBroken: "Sign-in is not configured for this service.",
     logout: "Sign out",
+    skipToContent: "Skip to content",
     searchPlaceholder: "Search in Drive",
+    clearSearch: "Clear search",
+    refresh: "Refresh",
     toggleTheme: "Toggle theme",
+    close: "Close",
     newButton: "New",
     actionUpload: "Upload files",
     actionNewFolder: "New folder",
@@ -31,6 +35,7 @@ const CATALOGS = {
     usage: "{count} files · {size}",
     usageTruncated: "More items are available. Load more to include them.",
     loadMore: "Load more",
+    retry: "Retry",
     pendingTitle: "Finish interrupted deletions",
     pendingBody:
       "These deletions need cleanup before their paths can be reused.",
@@ -54,6 +59,7 @@ const CATALOGS = {
     home: "My Drive",
     headingRecent: "Recent",
     headingResults: "Search results",
+    viewLabel: "View",
     viewList: "List view",
     viewGrid: "Grid view",
     colName: "Name",
@@ -62,6 +68,7 @@ const CATALOGS = {
     folder: "Folder",
     folderCount: "{count} items",
     itemMenu: "More actions",
+    itemMenuFor: "More actions for {name}",
     menuDownload: "Download",
     menuRename: "Rename",
     menuDelete: "Delete",
@@ -70,6 +77,7 @@ const CATALOGS = {
     renameLabel: "New name",
     newFolderTitle: "New folder",
     newFolderLabel: "Folder name",
+    nameRequired: "Enter a name.",
     nameInvalid: 'Names can\'t contain "/".',
     save: "OK",
     cancel: "Cancel",
@@ -83,9 +91,12 @@ const CATALOGS = {
     loading: "Loading…",
     emptyTitle: "Your drive is empty",
     emptyBody: "Drop files here or use “New” to upload.",
+    emptyFolderTitle: "This folder is empty",
+    emptyFolderBody: "Drop files here or use “New” to add items.",
     emptySearchTitle: "No matching files",
     emptySearchBody: "Try a different search term.",
     errLoad: "Couldn't load your files.",
+    errLoadBody: "Check your connection and try again.",
     errUpload: "Upload failed: {name}",
     errAction: "The operation failed.",
     errConflict:
@@ -122,8 +133,12 @@ const CATALOGS = {
     signinRedirect: "サインインへ移動しています…",
     authBroken: "このサービスのサインインが設定されていません。",
     logout: "ログアウト",
+    skipToContent: "本文へ移動",
     searchPlaceholder: "ドライブ内を検索",
+    clearSearch: "検索をクリア",
+    refresh: "更新",
     toggleTheme: "テーマを切り替え",
+    close: "閉じる",
     newButton: "新規",
     actionUpload: "ファイルをアップロード",
     actionNewFolder: "新しいフォルダ",
@@ -132,6 +147,7 @@ const CATALOGS = {
     usage: "{count} 個のファイル · {size}",
     usageTruncated: "続きの項目があります。「さらに読み込む」で表示できます。",
     loadMore: "さらに読み込む",
+    retry: "再試行",
     pendingTitle: "削除の後処理",
     pendingBody:
       "同じパスを再び使うには、残っている削除の後処理を完了してください。",
@@ -155,6 +171,7 @@ const CATALOGS = {
     home: "マイドライブ",
     headingRecent: "最近",
     headingResults: "検索結果",
+    viewLabel: "表示形式",
     viewList: "リスト表示",
     viewGrid: "ギャラリー表示",
     colName: "名前",
@@ -163,6 +180,7 @@ const CATALOGS = {
     folder: "フォルダ",
     folderCount: "{count} 件",
     itemMenu: "その他の操作",
+    itemMenuFor: "「{name}」のその他の操作",
     menuDownload: "ダウンロード",
     menuRename: "名前を変更",
     menuDelete: "削除",
@@ -171,6 +189,7 @@ const CATALOGS = {
     renameLabel: "新しい名前",
     newFolderTitle: "新しいフォルダ",
     newFolderLabel: "フォルダ名",
+    nameRequired: "名前を入力してください。",
     nameInvalid: "名前に「/」は使えません。",
     save: "OK",
     cancel: "キャンセル",
@@ -185,9 +204,13 @@ const CATALOGS = {
     emptyTitle: "ドライブはまだ空です",
     emptyBody:
       "ここにファイルをドロップするか、「新規」からアップロードしてください。",
+    emptyFolderTitle: "このフォルダは空です",
+    emptyFolderBody:
+      "ここにファイルをドロップするか、「新規」から追加してください。",
     emptySearchTitle: "一致するファイルはありません",
     emptySearchBody: "別のキーワードで検索してください。",
     errLoad: "ファイルを読み込めませんでした。",
+    errLoadBody: "接続を確認してもう一度お試しください。",
     errUpload: "アップロードに失敗: {name}",
     errAction: "操作に失敗しました。",
     errConflict:
@@ -244,6 +267,9 @@ const ICON_UPLOAD =
 const ICON_CLOCK = '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>';
 const ICON_HDD =
   '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 14h18"/><path d="M7 18h.01"/>';
+const ICON_REFRESH =
+  '<path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>';
+const ICON_X = '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>';
 
 export function storageConsoleHtml(): string {
   return `<!doctype html>
@@ -275,13 +301,16 @@ export function storageConsoleHtml(): string {
     --panel: #ffffff;
     --text: #1f1f1f;
     --text-soft: #5f6368;
-    --text-faint: #80868b;
+    --text-faint: #6c7075;
     --line: #e3e7ee;
     --hover: #eef1f6;
     --active-pill: #dbe9fb;
     --active-text: #0b57d0;
     --accent: #7c3aed;
     --focus: #7c3aed;
+    --warn: #9a5200;
+    --ok: #15803d;
+    --danger: #b91c1c;
     --shadow: 0 1px 2px rgba(60,64,67,.14), 0 1px 6px rgba(60,64,67,.12);
     --shadow-lg: 0 4px 8px rgba(60,64,67,.18), 0 8px 24px rgba(60,64,67,.14);
   }
@@ -291,12 +320,15 @@ export function storageConsoleHtml(): string {
     --panel: #161a22;
     --text: #e5e7eb;
     --text-soft: #9ca3af;
-    --text-faint: #6b7280;
+    --text-faint: #8e96a3;
     --line: #262b36;
     --hover: #20262f;
     --active-pill: rgba(139,92,246,.24);
     --active-text: #c4b5fd;
     --accent: #a78bfa;
+    --warn: #fbbf24;
+    --ok: #4ade80;
+    --danger: #f87171;
     --shadow: 0 1px 2px rgba(0,0,0,.5), 0 1px 6px rgba(0,0,0,.4);
     --shadow-lg: 0 4px 12px rgba(0,0,0,.55), 0 10px 28px rgba(0,0,0,.45);
   }
@@ -310,7 +342,14 @@ export function storageConsoleHtml(): string {
   }
   a { color: inherit; }
   button { font: inherit; color: inherit; }
-  :is(button, input, .row-link):focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+  :is(a, button, input, .row-link):focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+  .skip-link {
+    position: fixed; top: 8px; left: 8px; z-index: 90;
+    padding: 8px 14px; border-radius: 8px; border: 2px solid var(--focus);
+    background: var(--panel); color: var(--text); font-size: 13px; font-weight: 600;
+    text-decoration: none; transform: translateY(-200%);
+  }
+  .skip-link:focus-visible { transform: translateY(0); }
 
   /* ---- Boot splash (auth redirect / hard errors) ---- */
   .splash { flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px; }
@@ -331,15 +370,23 @@ export function storageConsoleHtml(): string {
   }
   .brand { display: flex; align-items: center; gap: 10px; font-size: 19px; text-decoration: none; flex-shrink: 0; }
   .brand b { font-weight: 600; }
-  .search { position: relative; flex: 1; max-width: 720px; }
+  .search { position: relative; flex: 1; max-width: 720px; min-width: 0; }
   .search .search-icon { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: var(--text-soft); pointer-events: none; display: inline-flex; }
   .search input {
-    width: 100%; padding: 12px 18px 12px 48px; font-size: 15px; color: var(--text);
+    width: 100%; padding: 11px 40px 11px 46px; font-size: 15px; color: var(--text);
     border: none; border-radius: 999px; outline: none; background: #e9eef6;
   }
+  .search input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
   [data-theme="dark"] .search input { background: #20262f; }
   .search input::placeholder { color: var(--text-soft); }
   .search input:focus { background: var(--panel); box-shadow: var(--shadow); }
+  .search-clear {
+    position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+    width: 32px; height: 32px; border: none; border-radius: 50%;
+    background: transparent; color: var(--text-soft); cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .search-clear:hover { background: var(--hover); color: var(--text); }
   .header-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
   .user-chip {
     display: inline-flex; align-items: center; gap: 8px; max-width: 260px;
@@ -388,17 +435,28 @@ export function storageConsoleHtml(): string {
   .nav-item[aria-pressed="true"] .nav-icon { color: var(--active-text); }
   .usage { margin-top: auto; padding: 14px 16px 0; font-size: 12px; color: var(--text-soft); display: flex; flex-direction: column; gap: 4px; }
   .usage .usage-line { display: flex; align-items: center; gap: 8px; }
-  .usage .warn { color: #d97706; }
+  .usage .warn, .mobile-usage .warn { color: var(--warn); }
+
+  .mobile-nav {
+    display: none; align-items: center; gap: 6px; padding: 0 12px 8px;
+    flex-wrap: wrap; flex-shrink: 0;
+  }
+  .mobile-nav .nav-item { width: auto; padding: 7px 14px; min-height: 40px; font-size: 13.5px; }
+  .mobile-usage {
+    margin-left: auto; font-size: 12px; color: var(--text-soft);
+    display: inline-flex; align-items: center; gap: 6px;
+  }
 
   main {
     flex: 1; min-width: 0; margin: 0 16px 16px 4px; padding: 8px 8px 24px;
     background: var(--panel); border-radius: 16px; overflow-y: auto; position: relative;
   }
   .main-head {
-    display: flex; align-items: center; gap: 12px;
+    display: flex; align-items: center; gap: 8px;
     padding: 10px 16px 6px; position: sticky; top: 0; background: var(--panel);
     border-radius: 16px 16px 0 0; z-index: 5; min-height: 52px;
   }
+  .main-head-actions { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
   .pending-deletions { padding: 16px; margin-bottom: 16px; border: 1px solid var(--line); border-radius: 12px; }
   .pending-deletions h2 { font-size: 16px; margin: 0 0 8px; }
   .pending-deletions p { margin: 0 0 12px; color: var(--text-soft); }
@@ -406,16 +464,17 @@ export function storageConsoleHtml(): string {
   .pending-list li { display: flex; align-items: center; gap: 12px; justify-content: space-between; padding: 8px 0; flex-wrap: wrap; }
   .pending-list .pending-path { min-width: 0; flex: 1 1 160px; overflow-wrap: anywhere; }
   #load-more { margin: 16px auto; }
-  .crumbs { display: flex; align-items: center; gap: 2px; flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; font-size: 20px; }
-  .crumb { border: none; background: transparent; cursor: pointer; font-size: 20px; color: var(--text-soft); padding: 4px 8px; border-radius: 8px; max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
+  .crumbs { display: flex; align-items: center; gap: 2px; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; white-space: nowrap; font-size: 20px; }
+  .crumbs::-webkit-scrollbar { display: none; }
+  .crumb { border: none; background: transparent; cursor: pointer; font-size: 20px; color: var(--text-soft); padding: 4px 8px; border-radius: 8px; max-width: 240px; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; }
   .crumb:hover { background: var(--hover); color: var(--text); }
   .crumb[aria-current="page"] { color: var(--text); cursor: default; }
   .crumb[aria-current="page"]:hover { background: transparent; }
-  .crumb-sep { color: var(--text-faint); font-size: 16px; }
+  .crumb-sep { color: var(--text-soft); font-size: 16px; flex-shrink: 0; }
   .view-toggle { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; flex-shrink: 0; }
   .seg {
     display: inline-flex; align-items: center; justify-content: center;
-    width: 44px; height: 32px; border: none; background: transparent; cursor: pointer; color: var(--text-soft);
+    width: 44px; height: 36px; border: none; background: transparent; cursor: pointer; color: var(--text-soft);
   }
   .seg + .seg { border-left: 1px solid var(--line); }
   .seg[aria-pressed="true"] { background: var(--active-pill); color: var(--active-text); }
@@ -434,12 +493,12 @@ export function storageConsoleHtml(): string {
   .row-link { position: absolute; inset: 0; border: none; background: transparent; cursor: pointer; border-radius: 4px; z-index: 1; }
   .row-name { display: flex; align-items: center; gap: 12px; min-width: 0; font-size: 14px; }
   .row-name .name-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .row-name .name-sub { font-size: 12px; color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row-name .name-sub { font-size: 12px; color: var(--text-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .row-size, .row-time { font-size: 13px; color: var(--text-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .kebab {
     position: relative; z-index: 2; justify-self: end;
     display: inline-flex; align-items: center; justify-content: center;
-    width: 34px; height: 34px; border: none; border-radius: 50%;
+    width: 38px; height: 38px; border: none; border-radius: 50%;
     background: transparent; color: var(--text-soft); cursor: pointer;
   }
   .kebab:hover { background: color-mix(in srgb, var(--text-soft) 16%, transparent); color: var(--text); }
@@ -465,9 +524,10 @@ export function storageConsoleHtml(): string {
   }
 
   .state { text-align: center; color: var(--text-soft); padding: 64px 24px; }
-  .state .state-icon { color: var(--text-faint); margin-bottom: 12px; }
+  .state .state-icon { color: var(--text-soft); margin-bottom: 12px; }
   .state h3 { margin: 0 0 4px; font-size: 16px; font-weight: 500; color: var(--text); }
   .state p { margin: 0; font-size: 13.5px; }
+  .state .state-action { margin-top: 16px; }
 
   .float-menu {
     position: fixed; z-index: 50; min-width: 210px; padding: 6px;
@@ -494,11 +554,13 @@ export function storageConsoleHtml(): string {
   dialog::backdrop { background: rgba(15,17,21,.4); }
   dialog h2 { margin: 0 0 14px; font-size: 17px; font-weight: 600; }
   dialog p { margin: 0 0 8px; font-size: 14px; color: var(--text-soft); line-height: 1.5; overflow-wrap: anywhere; }
+  dialog label { display: block; margin: 0 0 6px; font-size: 13px; font-weight: 500; color: var(--text-soft); }
   dialog input[type="text"] {
     width: 100%; padding: 10px 12px; font-size: 14px; color: var(--text);
     border: 1px solid var(--line); border-radius: 8px; background: var(--bg); outline: none;
   }
   dialog input[type="text"]:focus { border-color: var(--focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 18%, transparent); }
+  .field-error { margin: 6px 0 0; font-size: 13px; color: var(--danger); }
   .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
   .btn {
     padding: 8px 18px; border-radius: 999px; border: none; cursor: pointer;
@@ -512,7 +574,7 @@ export function storageConsoleHtml(): string {
 
   /* ---- Preview overlay ---- */
   .preview {
-    position: fixed; inset: 0; z-index: 70; background: rgba(10,12,16,.86);
+    position: fixed; inset: 0; z-index: 70; background: rgba(10,12,16,.88);
     display: none; flex-direction: column;
   }
   .preview.open { display: flex; }
@@ -527,7 +589,10 @@ export function storageConsoleHtml(): string {
     background: var(--panel); color: var(--text); border-radius: 12px; padding: 18px;
     font-size: 13px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere;
   }
-  .preview-body .preview-fallback { color: #cbd5e1; text-align: center; display: flex; flex-direction: column; gap: 14px; align-items: center; }
+  .preview-body .preview-fallback { color: #e5e7eb; text-align: center; display: flex; flex-direction: column; gap: 14px; align-items: center; }
+  .preview-body .preview-fallback .btn { color: #e5e7eb; border: 1px solid rgba(255,255,255,.28); }
+  .preview-body .preview-fallback .btn:hover { background: rgba(255,255,255,.14); }
+  .preview-body .preview-fallback .btn.primary { background: #ffffff; color: #0f1115; border-color: transparent; }
 
   /* ---- Upload tray ---- */
   .tray {
@@ -542,7 +607,7 @@ export function storageConsoleHtml(): string {
   .tray-list li { display: flex; align-items: center; gap: 10px; padding: 7px 14px; font-size: 13px; }
   .tray-list .tray-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .tray-list .tray-status { font-size: 12px; color: var(--text-soft); flex-shrink: 0; }
-  .tray-list .ok { color: #16a34a; } .tray-list .fail { color: #dc2626; }
+  .tray-list .ok { color: var(--ok); } .tray-list .fail { color: var(--danger); }
   .spin {
     width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0;
     border: 2px solid var(--line); border-top-color: var(--accent);
@@ -578,15 +643,19 @@ export function storageConsoleHtml(): string {
 
   @media (max-width: 820px) {
     aside { display: none; }
+    .mobile-nav { display: flex; }
     main { margin: 0 10px 10px; }
     .fab { display: inline-flex; }
     header.app { padding: 10px 12px; gap: 8px; }
     .user-chip .user-name { display: none; }
     .brand .brand-text { display: none; }
+    .text-btn { min-height: 40px; padding: 8px 10px; }
+    .seg { height: 40px; }
+    .kebab { width: 40px; height: 40px; }
     .tray { bottom: 84px; }
   }
   @media (max-width: 640px) {
-    .list-head, .row { grid-template-columns: minmax(0,1fr) 96px 40px; }
+    .list-head, .row { grid-template-columns: minmax(0,1fr) 92px 44px; }
     .list-head .sortable.col-size, .row-size { display: none; }
     .cards { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
     .card-thumb { height: 84px; }
@@ -604,11 +673,13 @@ export function storageConsoleHtml(): string {
 
   <!-- ---- Drive ---- -->
   <div id="app" hidden style="display:flex;flex-direction:column;flex:1;min-height:0">
+  <a class="skip-link" href="#main" data-i18n="skipToContent">${CATALOGS.en.skipToContent}</a>
   <header class="app">
     <a class="brand" href="/"><span class="mark">${svg(ICON_HDD, 17)}</span><span class="brand-text"><b>Takos</b> <span style="color:var(--text-soft);font-weight:400">Storage</span></span></a>
     <div class="search">
       <span class="search-icon">${svg(ICON_SEARCH, 18)}</span>
-      <input id="q" type="search" data-i18n-placeholder="searchPlaceholder" placeholder="${CATALOGS.en.searchPlaceholder}" autocomplete="off">
+      <input id="q" name="q" type="search" data-i18n-placeholder="searchPlaceholder" data-i18n-label="searchPlaceholder" placeholder="${CATALOGS.en.searchPlaceholder}" aria-label="${CATALOGS.en.searchPlaceholder}" autocomplete="off">
+      <button type="button" class="search-clear" id="q-clear" data-i18n-label="clearSearch" aria-label="${CATALOGS.en.clearSearch}" hidden>${svg(ICON_X, 15)}</button>
     </div>
     <div class="header-actions">
       <span class="user-chip" id="user-chip" hidden><span class="avatar" id="user-avatar"></span><span class="user-name" id="user-name"></span></span>
@@ -617,12 +688,22 @@ export function storageConsoleHtml(): string {
     </div>
   </header>
 
+  <nav class="mobile-nav" aria-label="Drive navigation">
+    <button type="button" class="nav-item" data-nav="files" aria-pressed="true">
+      <span class="nav-icon">${svg(ICON_FOLDER, 16)}</span><span data-i18n="navFiles">${CATALOGS.en.navFiles}</span>
+    </button>
+    <button type="button" class="nav-item" data-nav="recent" aria-pressed="false">
+      <span class="nav-icon">${svg(ICON_CLOCK, 16)}</span><span data-i18n="navRecent">${CATALOGS.en.navRecent}</span>
+    </button>
+    <span class="mobile-usage"><span id="mobile-usage-text"></span><span class="warn" id="mobile-usage-truncated" hidden aria-hidden="true">•</span></span>
+  </nav>
+
   <div class="layout">
     <aside>
       <button type="button" class="new-btn" id="new-btn" aria-haspopup="menu" aria-expanded="false">
         ${svg(ICON_PLUS, 22)}<span data-i18n="newButton">${CATALOGS.en.newButton}</span>
       </button>
-      <nav id="side-nav">
+      <nav id="side-nav" aria-label="Drive navigation">
         <button type="button" class="nav-item" data-nav="files" aria-pressed="true">
           <span class="nav-icon">${svg(ICON_FOLDER, 18)}</span><span data-i18n="navFiles">${CATALOGS.en.navFiles}</span>
         </button>
@@ -636,12 +717,15 @@ export function storageConsoleHtml(): string {
       </div>
     </aside>
 
-    <main id="main">
+    <main id="main" tabindex="-1">
       <div class="main-head">
         <nav class="crumbs" id="crumbs" aria-label="Breadcrumb"></nav>
-        <div class="view-toggle" role="group">
-          <button type="button" class="seg" data-view="list" aria-pressed="true" data-i18n-label="viewList" aria-label="${CATALOGS.en.viewList}">${svg(ICON_LIST, 18)}</button>
-          <button type="button" class="seg" data-view="grid" aria-pressed="false" data-i18n-label="viewGrid" aria-label="${CATALOGS.en.viewGrid}">${svg(ICON_GRID, 18)}</button>
+        <div class="main-head-actions">
+          <button type="button" class="icon-btn" id="refresh-btn" data-i18n-label="refresh" aria-label="${CATALOGS.en.refresh}">${svg(ICON_REFRESH, 17)}</button>
+          <div class="view-toggle" role="group" data-i18n-label="viewLabel" aria-label="${CATALOGS.en.viewLabel}">
+            <button type="button" class="seg" data-view="list" aria-pressed="true" data-i18n-label="viewList" aria-label="${CATALOGS.en.viewList}">${svg(ICON_LIST, 18)}</button>
+            <button type="button" class="seg" data-view="grid" aria-pressed="false" data-i18n-label="viewGrid" aria-label="${CATALOGS.en.viewGrid}">${svg(ICON_GRID, 18)}</button>
+          </div>
         </div>
       </div>
 
@@ -651,9 +735,9 @@ export function storageConsoleHtml(): string {
         <ul id="pending-list" class="pending-list"></ul>
       </section>
       <div class="list-head" id="list-head">
-        <button type="button" class="sortable" data-sort="name"><span data-i18n="colName">${CATALOGS.en.colName}</span><span class="sort-arrow" data-arrow="name"></span></button>
-        <button type="button" class="sortable col-size" data-sort="size"><span data-i18n="colSize">${CATALOGS.en.colSize}</span><span class="sort-arrow" data-arrow="size"></span></button>
-        <button type="button" class="sortable" data-sort="uploaded"><span data-i18n="colUpdated">${CATALOGS.en.colUpdated}</span><span class="sort-arrow" data-arrow="uploaded">▼</span></button>
+        <button type="button" class="sortable" data-sort="name" aria-sort="none"><span data-i18n="colName">${CATALOGS.en.colName}</span><span class="sort-arrow" data-arrow="name" aria-hidden="true"></span></button>
+        <button type="button" class="sortable col-size" data-sort="size" aria-sort="none"><span data-i18n="colSize">${CATALOGS.en.colSize}</span><span class="sort-arrow" data-arrow="size" aria-hidden="true"></span></button>
+        <button type="button" class="sortable" data-sort="uploaded" aria-sort="descending"><span data-i18n="colUpdated">${CATALOGS.en.colUpdated}</span><span class="sort-arrow" data-arrow="uploaded" aria-hidden="true">▼</span></button>
         <span></span>
       </div>
       <ul class="rows" id="rows"></ul>
@@ -665,7 +749,7 @@ export function storageConsoleHtml(): string {
   </div>
   </div>
 
-  <button type="button" class="fab" id="fab" data-i18n-label="newButton" aria-label="${CATALOGS.en.newButton}" hidden>${svg(ICON_PLUS, 24)}</button>
+  <button type="button" class="fab" id="fab" aria-haspopup="menu" aria-expanded="false" data-i18n-label="newButton" aria-label="${CATALOGS.en.newButton}" hidden>${svg(ICON_PLUS, 24)}</button>
 
   <input type="file" id="file-input" multiple hidden>
 
@@ -682,11 +766,13 @@ export function storageConsoleHtml(): string {
     <button type="button" role="menuitem" class="menu-item danger" data-action="delete"><span class="menu-icon">${svg('<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>', 18)}</span><span data-i18n="menuDelete">${CATALOGS.en.menuDelete}</span></button>
   </div>
 
-  <dialog id="name-dialog">
+  <dialog id="name-dialog" aria-labelledby="name-dialog-title">
     <h2 id="name-dialog-title"></h2>
     <p id="name-dialog-note" hidden></p>
     <form method="dialog" id="name-form">
-      <input type="text" id="name-input" autocomplete="off">
+      <label for="name-input" id="name-input-label"></label>
+      <input type="text" id="name-input" name="name" autocomplete="off" aria-describedby="name-error">
+      <p class="field-error" id="name-error" role="alert" hidden></p>
       <div class="dialog-actions">
         <button type="button" class="btn" data-close data-i18n="cancel">${CATALOGS.en.cancel}</button>
         <button type="submit" class="btn primary" data-i18n="save">${CATALOGS.en.save}</button>
@@ -694,8 +780,8 @@ export function storageConsoleHtml(): string {
     </form>
   </dialog>
 
-  <dialog id="delete-dialog">
-    <h2 data-i18n="deleteTitle">${CATALOGS.en.deleteTitle}</h2>
+  <dialog id="delete-dialog" aria-labelledby="delete-title">
+    <h2 id="delete-title" data-i18n="deleteTitle">${CATALOGS.en.deleteTitle}</h2>
     <p id="delete-body"></p>
     <div class="dialog-actions">
       <button type="button" class="btn" data-close data-i18n="cancel">${CATALOGS.en.cancel}</button>
@@ -721,18 +807,18 @@ export function storageConsoleHtml(): string {
     </div>
   </dialog>
 
-  <div class="preview" id="preview">
+  <div class="preview" id="preview" role="dialog" aria-modal="true" aria-labelledby="preview-name" tabindex="-1">
     <div class="preview-bar">
       <span class="preview-name" id="preview-name"></span>
       <button type="button" class="icon-btn" id="preview-download" data-i18n-label="download" aria-label="${CATALOGS.en.download}">${svg('<path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/>', 18)}</button>
-      <button type="button" class="icon-btn" id="preview-close" aria-label="Close">${svg('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>', 18)}</button>
+      <button type="button" class="icon-btn" id="preview-close" data-i18n-label="close" aria-label="${CATALOGS.en.close}">${svg(ICON_X, 18)}</button>
     </div>
     <div class="preview-body" id="preview-body"></div>
   </div>
 
   <div class="tray" id="tray">
     <div class="tray-head"><span data-i18n="upTrayTitle">${CATALOGS.en.upTrayTitle}</span><span class="spacer"></span>
-      <button type="button" class="icon-btn" id="tray-close" aria-label="Close" style="width:30px;height:30px">${svg('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>', 15)}</button>
+      <button type="button" class="icon-btn" id="tray-close" data-i18n-label="close" aria-label="${CATALOGS.en.close}" style="width:36px;height:36px">${svg(ICON_X, 15)}</button>
     </div>
     <ul class="tray-list" id="tray-list"></ul>
   </div>
@@ -817,6 +903,8 @@ export function storageConsoleHtml(): string {
   var crumbsEl = document.getElementById("crumbs");
   var toastEl = document.getElementById("toast");
   var searchInput = document.getElementById("q");
+  var searchClearBtn = document.getElementById("q-clear");
+  var refreshBtn = document.getElementById("refresh-btn");
   var currentVisible = [];
   var folderBusy = false;
   var cleanupBusy = false;
@@ -1041,6 +1129,11 @@ export function storageConsoleHtml(): string {
     });
   }
   document.getElementById("load-more").addEventListener("click", function () { load(true); });
+  if (refreshBtn) {
+    refreshBtn.addEventListener("click", function () {
+      if (!folderBusy && !cleanupBusy) load();
+    });
+  }
 
   function renderPending() {
     var panel = document.getElementById("pending-deletions");
@@ -1132,9 +1225,13 @@ export function storageConsoleHtml(): string {
       total += f.size || 0;
       count += 1;
     });
-    document.getElementById("usage-text").textContent =
-      t("usage", { count: count, size: fmtBytes(total) || "0 B" });
+    var summary = t("usage", { count: count, size: fmtBytes(total) || "0 B" });
+    document.getElementById("usage-text").textContent = summary;
     document.getElementById("usage-truncated").hidden = !state.truncated;
+    var mobileUsage = document.getElementById("mobile-usage-text");
+    if (mobileUsage) mobileUsage.textContent = summary;
+    var mobileTruncated = document.getElementById("mobile-usage-truncated");
+    if (mobileTruncated) mobileTruncated.hidden = !state.truncated;
   }
 
   // Items for the current view. Each item:
@@ -1211,7 +1308,7 @@ export function storageConsoleHtml(): string {
       acc += part + "/";
       var target = acc;
       var sep = document.createElement("span");
-      sep.className = "crumb-sep"; sep.textContent = "›";
+      sep.className = "crumb-sep"; sep.setAttribute("aria-hidden", "true"); sep.textContent = "›";
       frag.appendChild(sep);
       var btn = document.createElement("button");
       btn.type = "button"; btn.className = "crumb"; btn.textContent = part;
@@ -1220,21 +1317,38 @@ export function storageConsoleHtml(): string {
       frag.appendChild(btn);
     });
     crumbsEl.appendChild(frag);
+    if (typeof crumbsEl.scrollWidth === "number") crumbsEl.scrollLeft = crumbsEl.scrollWidth;
   }
-  function renderState(iconPaths, titleKey, bodyKey) {
+  function renderState(iconPaths, titleKey, bodyKey, action) {
     stateEl.innerHTML = '<div class="state-icon"><svg viewBox="0 0 24 24" width="52" height="52" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + iconPaths + "</svg></div>" +
       (titleKey ? "<h3>" + esc(t(titleKey)) + "</h3>" : "") +
       (bodyKey ? "<p>" + esc(t(bodyKey)) + "</p>" : "");
+    if (action) {
+      var wrap = document.createElement("div");
+      wrap.className = "state-action";
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn primary";
+      btn.textContent = t(action.labelKey);
+      btn.addEventListener("click", action.onClick);
+      wrap.appendChild(btn);
+      stateEl.appendChild(wrap);
+    }
     stateEl.hidden = false;
   }
   function render() {
     renderCrumbs();
     renderPending();
+    if (searchClearBtn) searchClearBtn.hidden = !searchInput.value;
     document.querySelectorAll("[data-nav]").forEach(function (el) {
       el.setAttribute("aria-pressed", String(!state.query && el.getAttribute("data-nav") === state.nav));
     });
     document.querySelectorAll("[data-view]").forEach(function (el) {
       el.setAttribute("aria-pressed", String(el.getAttribute("data-view") === state.view));
+    });
+    document.querySelectorAll("[data-sort]").forEach(function (el) {
+      var key = el.getAttribute("data-sort");
+      el.setAttribute("aria-sort", state.sort.key === key ? (state.sort.dir === "asc" ? "ascending" : "descending") : "none");
     });
     document.querySelectorAll(".sort-arrow").forEach(function (el) {
       var key = el.getAttribute("data-arrow");
@@ -1253,9 +1367,14 @@ export function storageConsoleHtml(): string {
       if (state.loading) {
         renderState('<circle cx="12" cy="12" r="9" stroke-dasharray="42 14"/>', "loading", null);
       } else if (state.failed) {
-        renderState('<circle cx="12" cy="12" r="9"/><path d="M12 8v4"/><path d="M12 16h.01"/>', "errLoad", null);
+        renderState('<circle cx="12" cy="12" r="9"/><path d="M12 8v4"/><path d="M12 16h.01"/>', "errLoad", "errLoadBody", {
+          labelKey: "retry",
+          onClick: function () { load(); },
+        });
       } else if (state.query) {
         renderState('<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>', "emptySearchTitle", "emptySearchBody");
+      } else if (state.path) {
+        renderState(${JSON.stringify(ICON_FOLDER)}, "emptyFolderTitle", "emptyFolderBody");
       } else {
         renderState(${JSON.stringify(ICON_FOLDER)}, "emptyTitle", "emptyBody");
       }
@@ -1272,7 +1391,8 @@ export function storageConsoleHtml(): string {
       var sizeText = item.type === "folder"
         ? (item.count ? t("folderCount", { count: item.count }) : t("folder"))
         : (fmtBytes(item.size) || "");
-      var kebab = '<button type="button" class="kebab" data-item="' + index + '" aria-haspopup="menu" aria-label="' + esc(t("itemMenu")) + '" title="' + esc(t("itemMenu")) + '">' +
+      var kebabLabel = t("itemMenuFor", { name: item.name });
+      var kebab = '<button type="button" class="kebab" data-item="' + index + '" aria-haspopup="menu" aria-expanded="false" aria-label="' + esc(kebabLabel) + '" title="' + esc(kebabLabel) + '">' +
         '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>';
       if (isList) {
         var li = document.createElement("li");
@@ -1323,19 +1443,33 @@ export function storageConsoleHtml(): string {
   var previewEl = document.getElementById("preview");
   var previewBody = document.getElementById("preview-body");
   var previewName = document.getElementById("preview-name");
+  var previewCloseBtn = document.getElementById("preview-close");
   var previewTarget = null;
   var previewUrl = null;
+  var previewOpener = null;
   var previewRequest = 0;
   var PREVIEW_TEXT_MAX = 1024 * 1024;
-  function closePreview() {
+  function closePreview(restoreFocus) {
+    var wasOpen = previewEl.classList.contains("open");
     previewRequest++;
     previewEl.classList.remove("open");
     previewBody.innerHTML = "";
     if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = null; }
     previewTarget = null;
+    if (wasOpen) {
+      appEl.inert = false;
+      fabEl.inert = false;
+      var opener = previewOpener;
+      previewOpener = null;
+      if (restoreFocus !== false && opener && typeof opener.focus === "function" && (typeof opener.isConnected !== "boolean" || opener.isConnected)) {
+        opener.focus();
+      }
+    }
   }
   function openPreview(item) {
-    closePreview();
+    var opener = previewEl.classList.contains("open") ? previewOpener : document.activeElement;
+    closePreview(false);
+    previewOpener = opener;
     var request = previewRequest;
     function isCurrent() { return request === previewRequest; }
     function showReadFailure() {
@@ -1348,6 +1482,10 @@ export function storageConsoleHtml(): string {
     previewName.textContent = item.name;
     previewBody.innerHTML = '<div class="preview-fallback">' + esc(t("loading")) + "</div>";
     previewEl.classList.add("open");
+    appEl.inert = true;
+    fabEl.inert = true;
+    if (previewCloseBtn && typeof previewCloseBtn.focus === "function") previewCloseBtn.focus();
+    else if (typeof previewEl.focus === "function") previewEl.focus();
     var kind = kindOf(item.name);
     if (kind === "image") {
       api(fileUrl(item.path), null, isCurrent).then(function (r) {
@@ -1433,14 +1571,25 @@ export function storageConsoleHtml(): string {
   var itemMenu = document.getElementById("item-menu");
   var newBtn = document.getElementById("new-btn");
   var menuTarget = null;
+  var menuAnchor = null;
 
-  function closeMenus() {
+  function closeMenus(restoreFocus) {
+    var prevAnchor = menuAnchor;
+    var wasOpen = newMenu.classList.contains("open") || itemMenu.classList.contains("open");
     newMenu.classList.remove("open");
     itemMenu.classList.remove("open");
     newBtn.setAttribute("aria-expanded", "false");
+    fabEl.setAttribute("aria-expanded", "false");
+    if (prevAnchor && typeof prevAnchor.setAttribute === "function") prevAnchor.setAttribute("aria-expanded", "false");
+    menuAnchor = null;
+    if (restoreFocus && wasOpen && prevAnchor && typeof prevAnchor.focus === "function" && (typeof prevAnchor.isConnected !== "boolean" || prevAnchor.isConnected)) {
+      prevAnchor.focus();
+    }
   }
   function openMenuAt(menu, anchor) {
-    closeMenus();
+    closeMenus(false);
+    menuAnchor = anchor;
+    if (anchor && typeof anchor.setAttribute === "function") anchor.setAttribute("aria-expanded", "true");
     menu.classList.add("open");
     var r = anchor.getBoundingClientRect();
     var mw = menu.offsetWidth, mh = menu.offsetHeight;
@@ -1449,28 +1598,67 @@ export function storageConsoleHtml(): string {
     if (y + mh > window.innerHeight - 8) y = Math.max(8, r.top - mh - 6);
     menu.style.left = Math.max(8, x) + "px";
     menu.style.top = y + "px";
-    var first = menu.querySelector(".menu-item:not([hidden])");
-    if (first) first.focus();
+    var first = menu.querySelector(".menu-item:not([hidden]):not([disabled])") || menu.querySelector(".menu-item:not([hidden])");
+    if (first && typeof first.focus === "function") first.focus();
   }
+  [newMenu, itemMenu].forEach(function (menu) {
+    menu.addEventListener("keydown", function (e) {
+      if (!menu.classList.contains("open") || typeof menu.querySelectorAll !== "function") return;
+      if (e.key !== "ArrowDown" && e.key !== "ArrowUp" && e.key !== "Home" && e.key !== "End") return;
+      var items = Array.prototype.filter.call(menu.querySelectorAll('[role="menuitem"]'), function (el) {
+        return !el.hidden && !el.disabled;
+      });
+      if (!items.length) return;
+      e.preventDefault();
+      var idx = items.indexOf(document.activeElement);
+      if (e.key === "Home") idx = 0;
+      else if (e.key === "End") idx = items.length - 1;
+      else if (e.key === "ArrowDown") idx = idx < 0 ? 0 : (idx + 1) % items.length;
+      else idx = idx <= 0 ? items.length - 1 : idx - 1;
+      items[idx].focus();
+    });
+  });
   newBtn.addEventListener("click", function (e) {
     e.stopPropagation();
-    if (newMenu.classList.contains("open")) { closeMenus(); return; }
+    if (newMenu.classList.contains("open")) { closeMenus(true); return; }
     openMenuAt(newMenu, newBtn);
-    newBtn.setAttribute("aria-expanded", "true");
   });
   fabEl.addEventListener("click", function (e) {
     e.stopPropagation();
-    if (newMenu.classList.contains("open")) { closeMenus(); return; }
+    if (newMenu.classList.contains("open")) { closeMenus(true); return; }
     openMenuAt(newMenu, fabEl);
   });
   document.addEventListener("click", function (e) {
-    if (!newMenu.contains(e.target) && !itemMenu.contains(e.target)) closeMenus();
+    if (!newMenu.contains(e.target) && !itemMenu.contains(e.target)) closeMenus(false);
   });
   document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape") { closeMenus(); closePreview(); }
+    if (e.key === "Escape") {
+      if (newMenu.classList.contains("open") || itemMenu.classList.contains("open")) {
+        e.preventDefault();
+        closeMenus(true);
+      } else if (previewEl.classList.contains("open")) {
+        e.preventDefault();
+        closePreview(true);
+      }
+      return;
+    }
+    if (e.key === "Tab" && previewEl.classList.contains("open") && typeof previewEl.querySelectorAll === "function") {
+      var focusable = Array.prototype.filter.call(
+        previewEl.querySelectorAll("button:not([disabled]):not([hidden]), a[href], [tabindex]:not([tabindex='-1'])"),
+        function (el) { return !el.hidden; }
+      );
+      if (!focusable.length) { e.preventDefault(); previewEl.focus(); return; }
+      var first = focusable[0], last = focusable[focusable.length - 1];
+      var inside = typeof previewEl.contains === "function" && previewEl.contains(document.activeElement);
+      if (e.shiftKey) {
+        if (!inside || document.activeElement === first) { e.preventDefault(); last.focus(); }
+      } else if (!inside || document.activeElement === last) {
+        e.preventDefault(); first.focus();
+      }
+    }
   });
-  window.addEventListener("resize", closeMenus);
-  document.getElementById("main").addEventListener("scroll", closeMenus);
+  window.addEventListener("resize", function () { closeMenus(false); });
+  document.getElementById("main").addEventListener("scroll", function () { closeMenus(false); });
 
   document.addEventListener("click", function (e) {
     var kebab = e.target.closest ? e.target.closest(".kebab") : null;
@@ -1521,15 +1709,35 @@ export function storageConsoleHtml(): string {
 
   // ---- Search ----
   var searchTimer;
+  function clearSearch(refocus) {
+    clearTimeout(searchTimer);
+    searchInput.value = "";
+    state.query = "";
+    if (searchClearBtn) searchClearBtn.hidden = true;
+    render();
+    if (refocus && typeof searchInput.focus === "function") searchInput.focus();
+  }
   searchInput.addEventListener("input", function () {
+    if (searchClearBtn) searchClearBtn.hidden = !searchInput.value;
     clearTimeout(searchTimer);
     searchTimer = setTimeout(function () {
       state.query = searchInput.value.trim();
       render();
     }, 150);
   });
+  searchInput.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && (searchInput.value || state.query)) {
+      e.preventDefault();
+      clearSearch(true);
+    }
+  });
+  if (searchClearBtn) {
+    searchClearBtn.addEventListener("click", function () { clearSearch(true); });
+  }
   document.addEventListener("keydown", function (e) {
     if (e.key === "/" && document.activeElement !== searchInput &&
+        !previewEl.classList.contains("open") &&
+        !(typeof document.querySelector === "function" && document.querySelector("dialog[open]")) &&
         !(document.activeElement && /INPUT|TEXTAREA/.test(document.activeElement.tagName))) {
       e.preventDefault();
       searchInput.focus();
@@ -1607,10 +1815,24 @@ export function storageConsoleHtml(): string {
   var nameDialog = document.getElementById("name-dialog");
   var nameForm = document.getElementById("name-form");
   var nameInput = document.getElementById("name-input");
+  var nameInputLabel = document.getElementById("name-input-label");
+  var nameError = document.getElementById("name-error");
   var nameDialogTitle = document.getElementById("name-dialog-title");
   var nameDialogNote = document.getElementById("name-dialog-note");
   var nameMode = null; // "folder" | "rename"
   var actionTarget = null;
+
+  function setNameError(message) {
+    if (nameError) {
+      nameError.textContent = message || "";
+      nameError.hidden = !message;
+    }
+    if (typeof nameInput.setAttribute === "function") {
+      if (message) nameInput.setAttribute("aria-invalid", "true");
+      else if (typeof nameInput.removeAttribute === "function") nameInput.removeAttribute("aria-invalid");
+    }
+  }
+  nameInput.addEventListener("input", function () { setNameError(""); });
 
   document.querySelectorAll("[data-close]").forEach(function (el) {
     el.addEventListener("click", function () { el.closest("dialog").close(); });
@@ -1619,13 +1841,15 @@ export function storageConsoleHtml(): string {
   document.querySelectorAll("[data-new]").forEach(function (el) {
     el.addEventListener("click", function () {
       var mode = el.getAttribute("data-new");
-      closeMenus();
+      closeMenus(false);
       if (mode === "upload") { fileInput.click(); return; }
       nameMode = "folder";
       nameDialogTitle.textContent = t("newFolderTitle");
       nameDialogNote.hidden = true;
       nameInput.value = "";
+      if (nameInputLabel) nameInputLabel.textContent = t("newFolderLabel");
       nameInput.setAttribute("aria-label", t("newFolderLabel"));
+      setNameError("");
       nameDialog.showModal();
     });
   });
@@ -1638,7 +1862,7 @@ export function storageConsoleHtml(): string {
     el.addEventListener("click", function () {
       var action = el.getAttribute("data-action");
       var item = menuTarget;
-      closeMenus();
+      closeMenus(false);
       if (!item || folderBusy) return;
       if (action === "open") { openItem(item); return; }
       if (action === "download") { download(item); return; }
@@ -1655,7 +1879,9 @@ export function storageConsoleHtml(): string {
           nameDialogNote.hidden = true;
         }
         nameInput.value = item.name;
+        if (nameInputLabel) nameInputLabel.textContent = t("renameLabel");
         nameInput.setAttribute("aria-label", t("renameLabel"));
+        setNameError("");
         nameDialog.showModal();
         nameInput.select();
       } else if (action === "delete") {
@@ -1670,12 +1896,19 @@ export function storageConsoleHtml(): string {
   nameForm.addEventListener("submit", function (e) {
     if (folderBusy) { e.preventDefault(); return; }
     var name = nameInput.value.trim();
-    if (!name) return;
-    if (name.indexOf("/") >= 0) {
+    if (!name) {
       e.preventDefault();
-      toast(t("nameInvalid"));
+      setNameError(t("nameRequired"));
+      nameInput.focus();
       return;
     }
+    if (name.indexOf("/") >= 0) {
+      e.preventDefault();
+      setNameError(t("nameInvalid"));
+      nameInput.focus();
+      return;
+    }
+    setNameError("");
     if (nameMode === "folder") {
       api(fileUrl(state.path + name + "/"), {
         method: "PUT",
