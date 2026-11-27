@@ -109,6 +109,8 @@ const CATALOGS = {
     upFailed: "Failed",
     previewNone: "No preview available.",
     previewTooBig: "Too large to preview.",
+    previewReadFailed: "Couldn't load the preview.",
+    previewRetry: "Retry",
     download: "Download",
     dropHint: "Drop files to upload",
     justNow: "just now",
@@ -209,6 +211,8 @@ const CATALOGS = {
     upFailed: "失敗",
     previewNone: "プレビューできない形式です。",
     previewTooBig: "サイズが大きいためプレビューできません。",
+    previewReadFailed: "プレビューを読み込めませんでした。",
+    previewRetry: "再試行",
     download: "ダウンロード",
     dropHint: "ドロップしてアップロード",
     justNow: "たった今",
@@ -1334,6 +1338,12 @@ export function storageConsoleHtml(): string {
     closePreview();
     var request = previewRequest;
     function isCurrent() { return request === previewRequest; }
+    function showReadFailure() {
+      if (!isCurrent()) return;
+      fallbackPreview("previewReadFailed", function () {
+        if (isCurrent()) openPreview(item);
+      });
+    }
     previewTarget = item;
     previewName.textContent = item.name;
     previewBody.innerHTML = '<div class="preview-fallback">' + esc(t("loading")) + "</div>";
@@ -1352,7 +1362,7 @@ export function storageConsoleHtml(): string {
         img.src = previewUrl;
         img.alt = item.name;
         previewBody.appendChild(img);
-      }).catch(function () { if (isCurrent()) fallbackPreview(); });
+      }).catch(showReadFailure);
       return;
     }
     if (kind === "text" && (item.size || 0) <= PREVIEW_TEXT_MAX) {
@@ -1366,21 +1376,31 @@ export function storageConsoleHtml(): string {
         var pre = document.createElement("pre");
         pre.textContent = text;
         previewBody.appendChild(pre);
-      }).catch(function () { if (isCurrent()) fallbackPreview(); });
+      }).catch(showReadFailure);
       return;
     }
     fallbackPreview(kind === "text" ? "previewTooBig" : "previewNone");
   }
-  function fallbackPreview(msgKey) {
+  function fallbackPreview(msgKey, retry) {
     previewBody.innerHTML = "";
     var box = document.createElement("div");
     box.className = "preview-fallback";
     var msg = document.createElement("span");
-    msg.textContent = t(msgKey || "previewNone");
+    msg.textContent = t(msgKey);
+    box.appendChild(msg);
+    if (retry) {
+      msg.setAttribute("role", "alert");
+      var retryButton = document.createElement("button");
+      retryButton.type = "button";
+      retryButton.className = "btn primary";
+      retryButton.textContent = t("previewRetry");
+      retryButton.addEventListener("click", retry);
+      box.appendChild(retryButton);
+    }
     var btn = document.createElement("button");
-    btn.type = "button"; btn.className = "btn primary"; btn.textContent = t("download");
+    btn.type = "button"; btn.className = retry ? "btn" : "btn primary"; btn.textContent = t("download");
     btn.addEventListener("click", function () { if (previewTarget) download(previewTarget); });
-    box.appendChild(msg); box.appendChild(btn);
+    box.appendChild(btn);
     previewBody.appendChild(box);
   }
   document.getElementById("preview-close").addEventListener("click", closePreview);

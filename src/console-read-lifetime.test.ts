@@ -573,17 +573,42 @@ describe("console preview response lifetime", () => {
     expect(f.location.href).toBe("/api/auth/login?return_to=%2F");
   });
 
-  test("a current error offers fallback and reopening the file recovers", async () => {
+  for (const failure of ["network", "http"] as const) {
+    test(`a current ${failure} preview failure can retry the same file`, async () => {
+      const f = await fixture();
+      await f.files({ "a.txt": "A", "b.txt": "B" });
+      const current = await f.holdPreview("a.txt");
+      if (failure === "network")
+        current.response.reject(new TypeError("Offline"));
+      else current.response.resolve(new Response(null, { status: 503 }));
+      await until(() => (f.preview()?.children.length ?? 0) > 0);
+      expect(f.preview()?.children.map((child) => child.textContent)).toEqual([
+        "Couldn't load the preview.",
+        "Retry",
+        "Download",
+      ]);
+      expect(f.preview()?.children[0]?.getAttribute("role")).toBe("alert");
+      const retry = f.preview()!.children[1]!;
+      retry.click();
+      await until(() => f.preview()?.textContent === "A");
+      expect(f.node("preview").classes.has("open")).toBe(true);
+
+      f.client.preview("b.txt");
+      await until(() => f.preview()?.textContent === "B");
+      retry.click();
+      expect(f.node("preview-name").textContent).toBe("b.txt");
+      expect(f.preview()?.textContent).toBe("B");
+    });
+  }
+
+  test("an unsupported preview still offers only a download", async () => {
     const f = await fixture();
-    await f.files({ "a.txt": "A" });
-    const current = await f.holdPreview("a.txt");
-    current.response.resolve(new Response(null, { status: 503 }));
-    await until(() => f.preview()?.children.length === 2);
-    expect(f.preview()?.children[1]?.textContent).toBe("Download");
-    f.client.closePreview();
-    f.client.preview("a.txt");
-    await until(() => f.preview()?.textContent === "A");
-    expect(f.node("preview").classes.has("open")).toBe(true);
+    await f.files({ "a.bin": "A" });
+    f.client.preview("a.bin");
+    expect(f.preview()?.children.map((child) => child.textContent)).toEqual([
+      "No preview available.",
+      "Download",
+    ]);
   });
 
   test("replacing and closing an image release each owned object URL once", async () => {
