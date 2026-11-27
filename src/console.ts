@@ -26,6 +26,8 @@ const CATALOGS = {
     clearSearch: "Clear search",
     refresh: "Refresh",
     toggleTheme: "Toggle theme",
+    switchLang: "Switch language to Japanese",
+    breadcrumbLabel: "Breadcrumb",
     close: "Close",
     newButton: "New",
     actionUpload: "Upload files",
@@ -76,8 +78,23 @@ const CATALOGS = {
     itemMenuFor: "More actions for {name}",
     menuDownload: "Download",
     menuRename: "Rename",
+    menuMove: "Move to folder…",
     menuDelete: "Delete",
     menuOpen: "Open",
+    moveTitle: "Move to folder",
+    moveItemPrompt: "Choose a destination for “{name}”.",
+    moveFolderLabel: "Destination folder",
+    moveCurrentSuffix: "{label} (current)",
+    moveCustomOption: "Other folder path…",
+    moveCustomLabel: "Folder path",
+    moveCustomPlaceholder: "e.g. Documents/Archive",
+    movePathRequired: "Enter a folder path.",
+    movePathInvalid: "Enter a valid folder path.",
+    moveSameFolder: "Already in this folder.",
+    moveIntoSelf: "Can't move a folder into itself or a conflicting path.",
+    moveConfirm: "Move",
+    moveFolderBody:
+      "Move {count} reviewed entries to the destination folder. Entries are copied and removed individually. A conflict can leave both copies; review the results before another attempt.",
     renameTitle: "Rename",
     renameLabel: "New name",
     newFolderTitle: "New folder",
@@ -100,6 +117,8 @@ const CATALOGS = {
     emptyFolderBody: "Drop files here or use “New” to add items.",
     emptySearchTitle: "No matching files",
     emptySearchBody: "Try a different search term.",
+    searchTruncated:
+      "Searching loaded items only. Load more to search the rest of your drive.",
     errLoad: "Couldn't load your files.",
     errLoadBody: "Check your connection and try again.",
     errUpload: "Upload failed: {name}",
@@ -121,8 +140,13 @@ const CATALOGS = {
     folderRemaining: "Unprocessed or uncertain entries:",
     folderDismiss: "Close and review files",
     upTrayTitle: "Uploads",
+    upProgress: "{done} / {total}",
+    upProgressFailed: "{done} / {total} · {failed} failed",
+    upUploading: "Uploading…",
     upDone: "Done",
     upFailed: "Failed",
+    upRetry: "Retry",
+    upRetryFor: "Retry uploading {name}",
     previewNone: "No preview available.",
     previewTooBig: "Too large to preview.",
     previewReadFailed: "Couldn't load the preview.",
@@ -143,6 +167,8 @@ const CATALOGS = {
     clearSearch: "検索をクリア",
     refresh: "更新",
     toggleTheme: "テーマを切り替え",
+    switchLang: "英語に切り替え",
+    breadcrumbLabel: "パンくずリスト",
     close: "閉じる",
     newButton: "新規",
     actionUpload: "ファイルをアップロード",
@@ -193,8 +219,23 @@ const CATALOGS = {
     itemMenuFor: "「{name}」のその他の操作",
     menuDownload: "ダウンロード",
     menuRename: "名前を変更",
+    menuMove: "フォルダへ移動…",
     menuDelete: "削除",
     menuOpen: "開く",
+    moveTitle: "フォルダへ移動",
+    moveItemPrompt: "「{name}」の移動先を選んでください。",
+    moveFolderLabel: "移動先フォルダ",
+    moveCurrentSuffix: "{label}（現在）",
+    moveCustomOption: "その他のフォルダパス…",
+    moveCustomLabel: "フォルダパス",
+    moveCustomPlaceholder: "例: Documents/Archive",
+    movePathRequired: "フォルダパスを入力してください。",
+    movePathInvalid: "有効なフォルダパスを入力してください。",
+    moveSameFolder: "すでにこのフォルダにあります。",
+    moveIntoSelf: "フォルダを自分自身や競合するパスへ移動できません。",
+    moveConfirm: "移動",
+    moveFolderBody:
+      "確認済み {count} 件を移動先フォルダへ移動します。1件ずつコピー・削除するため、競合すると両方に残ることがあります。結果を確認してから次の操作をしてください。",
     renameTitle: "名前を変更",
     renameLabel: "新しい名前",
     newFolderTitle: "新しいフォルダ",
@@ -219,6 +260,8 @@ const CATALOGS = {
       "ここにファイルをドロップするか、「新規」から追加してください。",
     emptySearchTitle: "一致するファイルはありません",
     emptySearchBody: "別のキーワードで検索してください。",
+    searchTruncated:
+      "読み込み済みの項目のみを検索しています。残りを検索するには「さらに読み込む」を押してください。",
     errLoad: "ファイルを読み込めませんでした。",
     errLoadBody: "接続を確認してもう一度お試しください。",
     errUpload: "アップロードに失敗: {name}",
@@ -240,8 +283,13 @@ const CATALOGS = {
     folderRemaining: "未処理または結果未確定の項目:",
     folderDismiss: "閉じてファイルを確認",
     upTrayTitle: "アップロード",
+    upProgress: "{done} / {total}",
+    upProgressFailed: "{done} / {total} · {failed}件失敗",
+    upUploading: "アップロード中…",
     upDone: "完了",
     upFailed: "失敗",
+    upRetry: "再試行",
+    upRetryFor: "「{name}」のアップロードを再試行",
     previewNone: "プレビューできない形式です。",
     previewTooBig: "サイズが大きいためプレビューできません。",
     previewReadFailed: "プレビューを読み込めませんでした。",
@@ -279,6 +327,8 @@ const ICON_HDD =
   '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 14h18"/><path d="M7 18h.01"/>';
 const ICON_REFRESH =
   '<path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>';
+const ICON_MOVE =
+  '<path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9L9.2 3.9A2 2 0 0 0 7.5 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/><path d="m12 10 3 3-3 3"/><path d="M9 13h6"/>';
 const ICON_X = '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>';
 
 export function storageConsoleHtml(): string {
@@ -352,7 +402,7 @@ export function storageConsoleHtml(): string {
   }
   a { color: inherit; }
   button { font: inherit; color: inherit; }
-  :is(a, button, input, .row-link):focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+  :is(a, button, input, select, .row-link):focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
   .skip-link {
     position: fixed; top: 8px; left: 8px; z-index: 90;
     padding: 8px 14px; border-radius: 8px; border: 2px solid var(--focus);
@@ -415,6 +465,14 @@ export function storageConsoleHtml(): string {
     background: transparent; color: var(--text-soft); cursor: pointer;
   }
   .icon-btn:hover { background: var(--hover); color: var(--text); }
+  .lang-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 40px; height: 36px; padding: 0 10px;
+    border: 1px solid var(--line); border-radius: 999px;
+    background: transparent; color: var(--text-soft); cursor: pointer;
+    font-size: 12px; font-weight: 600; letter-spacing: .04em;
+  }
+  .lang-btn:hover { background: var(--hover); color: var(--text); }
   .text-btn {
     border: none; background: transparent; color: var(--active-text);
     font-size: 13px; cursor: pointer; padding: 6px 10px; border-radius: 8px; white-space: nowrap;
@@ -473,7 +531,16 @@ export function storageConsoleHtml(): string {
   .pending-list { list-style: none; margin: 0; padding: 0; }
   .pending-list li { display: flex; align-items: center; gap: 12px; justify-content: space-between; padding: 8px 0; flex-wrap: wrap; }
   .pending-list .pending-path { min-width: 0; flex: 1 1 160px; overflow-wrap: anywhere; }
-  #load-more { margin: 16px auto; }
+  .search-notice {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+    margin: 4px 16px 10px; padding: 10px 14px;
+    border: 1px solid color-mix(in srgb, var(--warn) 35%, var(--line));
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--warn) 8%, var(--panel));
+    font-size: 13px; color: var(--text);
+  }
+  .search-notice-text { flex: 1 1 200px; min-width: 0; }
+  #load-more { display: block; margin: 16px auto; }
   .crumbs { display: flex; align-items: center; gap: 2px; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; white-space: nowrap; font-size: 20px; }
   .crumbs::-webkit-scrollbar { display: none; }
   .crumb { border: none; background: transparent; cursor: pointer; font-size: 20px; color: var(--text-soft); padding: 4px 8px; border-radius: 8px; max-width: 240px; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; }
@@ -565,11 +632,12 @@ export function storageConsoleHtml(): string {
   dialog h2 { margin: 0 0 14px; font-size: 17px; font-weight: 600; }
   dialog p { margin: 0 0 8px; font-size: 14px; color: var(--text-soft); line-height: 1.5; overflow-wrap: anywhere; }
   dialog label { display: block; margin: 0 0 6px; font-size: 13px; font-weight: 500; color: var(--text-soft); }
-  dialog input[type="text"] {
+  dialog input[type="text"], dialog select {
     width: 100%; padding: 10px 12px; font-size: 14px; color: var(--text);
     border: 1px solid var(--line); border-radius: 8px; background: var(--bg); outline: none;
   }
-  dialog input[type="text"]:focus { border-color: var(--focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 18%, transparent); }
+  dialog input[type="text"]:focus, dialog select:focus { border-color: var(--focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 18%, transparent); }
+  .dialog-field { margin-top: 12px; }
   .field-error { margin: 6px 0 0; font-size: 13px; color: var(--danger); }
   .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
   .btn {
@@ -611,13 +679,20 @@ export function storageConsoleHtml(): string {
     box-shadow: var(--shadow-lg); overflow: hidden; display: none;
   }
   .tray.open { display: block; }
-  .tray-head { display: flex; align-items: center; padding: 10px 14px; font-size: 13.5px; font-weight: 600; border-bottom: 1px solid var(--line); }
+  .tray-head { display: flex; align-items: center; gap: 8px; padding: 10px 14px; font-size: 13.5px; font-weight: 600; border-bottom: 1px solid var(--line); }
+  .tray-head .tray-progress { font-size: 12px; font-weight: 500; color: var(--text-soft); white-space: nowrap; }
   .tray-head .spacer { flex: 1; }
   .tray-list { list-style: none; margin: 0; padding: 6px 0; max-height: 240px; overflow-y: auto; }
-  .tray-list li { display: flex; align-items: center; gap: 10px; padding: 7px 14px; font-size: 13px; }
+  .tray-list li { display: flex; align-items: center; gap: 8px; padding: 7px 14px; font-size: 13px; }
   .tray-list .tray-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .tray-list .tray-status { font-size: 12px; color: var(--text-soft); flex-shrink: 0; }
   .tray-list .ok { color: var(--ok); } .tray-list .fail { color: var(--danger); }
+  .tray-retry {
+    padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line);
+    background: transparent; color: var(--active-text); font-size: 12px; font-weight: 500;
+    cursor: pointer; flex-shrink: 0;
+  }
+  .tray-retry:hover { background: var(--hover); }
   .spin {
     width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0;
     border: 2px solid var(--line); border-top-color: var(--accent);
@@ -660,11 +735,15 @@ export function storageConsoleHtml(): string {
     .user-chip .user-name { display: none; }
     .brand .brand-text { display: none; }
     .text-btn { min-height: 40px; padding: 8px 10px; }
+    .lang-btn { height: 40px; }
+    .tray-retry { min-height: 40px; padding: 8px 12px; }
     .seg { height: 40px; }
     .kebab { width: 40px; height: 40px; }
     .tray { bottom: 84px; }
   }
   @media (max-width: 640px) {
+    header.app { flex-wrap: wrap; }
+    .search { order: 3; flex: 1 0 100%; max-width: none; }
     .list-head, .row { grid-template-columns: minmax(0,1fr) 92px 44px; }
     .list-head .sortable.col-size, .row-size { display: none; }
     .cards { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
@@ -694,6 +773,7 @@ export function storageConsoleHtml(): string {
     <div class="header-actions">
       <span class="user-chip" id="user-chip" hidden><span class="avatar" id="user-avatar"></span><span class="user-name" id="user-name"></span></span>
       <button type="button" class="text-btn" id="logout" hidden data-i18n="logout">${CATALOGS.en.logout}</button>
+      <button id="lang-toggle" class="lang-btn" type="button" aria-label="${CATALOGS.en.switchLang}" title="${CATALOGS.en.switchLang}">EN</button>
       <button id="theme-toggle" class="icon-btn" type="button" data-i18n-label="toggleTheme" aria-label="${CATALOGS.en.toggleTheme}"></button>
     </div>
   </header>
@@ -729,7 +809,7 @@ export function storageConsoleHtml(): string {
 
     <main id="main" tabindex="-1">
       <div class="main-head">
-        <nav class="crumbs" id="crumbs" aria-label="Breadcrumb"></nav>
+        <nav class="crumbs" id="crumbs" data-i18n-label="breadcrumbLabel" aria-label="${CATALOGS.en.breadcrumbLabel}"></nav>
         <div class="main-head-actions">
           <button type="button" class="icon-btn" id="refresh-btn" data-i18n-label="refresh" aria-label="${CATALOGS.en.refresh}">${svg(ICON_REFRESH, 17)}</button>
           <div class="view-toggle" role="group" data-i18n-label="viewLabel" aria-label="${CATALOGS.en.viewLabel}">
@@ -744,6 +824,10 @@ export function storageConsoleHtml(): string {
         <p data-i18n="pendingBody">${CATALOGS.en.pendingBody}</p>
         <ul id="pending-list" class="pending-list"></ul>
       </section>
+      <div id="search-truncated" class="search-notice" role="status" aria-live="polite" hidden>
+        <span class="search-notice-text" data-i18n="searchTruncated">${CATALOGS.en.searchTruncated}</span>
+        <button type="button" class="btn primary" id="search-load-more" data-i18n="loadMore">${CATALOGS.en.loadMore}</button>
+      </div>
       <div class="list-head" id="list-head">
         <button type="button" class="sortable" data-sort="name" aria-pressed="false" aria-label="${CATALOGS.en.sortAction.replace("{label}", CATALOGS.en.colName)}"><span data-i18n="colName">${CATALOGS.en.colName}</span><span class="sort-arrow" data-arrow="name" aria-hidden="true"></span></button>
         <button type="button" class="sortable col-size" data-sort="size" aria-pressed="false" aria-label="${CATALOGS.en.sortAction.replace("{label}", CATALOGS.en.colSize)}"><span data-i18n="colSize">${CATALOGS.en.colSize}</span><span class="sort-arrow" data-arrow="size" aria-hidden="true"></span></button>
@@ -772,6 +856,7 @@ export function storageConsoleHtml(): string {
     <button type="button" role="menuitem" class="menu-item" data-action="open"><span class="menu-icon">${svg('<path d="M5 12h14"/><path d="m13 6 6 6-6 6"/>', 18)}</span><span data-i18n="menuOpen">${CATALOGS.en.menuOpen}</span></button>
     <button type="button" role="menuitem" class="menu-item" data-action="download"><span class="menu-icon">${svg('<path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/>', 18)}</span><span data-i18n="menuDownload">${CATALOGS.en.menuDownload}</span></button>
     <button type="button" role="menuitem" class="menu-item" data-action="rename"><span class="menu-icon">${svg('<path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>', 18)}</span><span data-i18n="menuRename">${CATALOGS.en.menuRename}</span></button>
+    <button type="button" role="menuitem" class="menu-item" data-action="move"><span class="menu-icon">${svg(ICON_MOVE, 18)}</span><span data-i18n="menuMove">${CATALOGS.en.menuMove}</span></button>
     <hr class="menu-sep">
     <button type="button" role="menuitem" class="menu-item danger" data-action="delete"><span class="menu-icon">${svg('<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>', 18)}</span><span data-i18n="menuDelete">${CATALOGS.en.menuDelete}</span></button>
   </div>
@@ -786,6 +871,25 @@ export function storageConsoleHtml(): string {
       <div class="dialog-actions">
         <button type="button" class="btn" data-close data-i18n="cancel">${CATALOGS.en.cancel}</button>
         <button type="submit" class="btn primary" data-i18n="save">${CATALOGS.en.save}</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="move-dialog" aria-labelledby="move-dialog-title">
+    <h2 id="move-dialog-title" data-i18n="moveTitle">${CATALOGS.en.moveTitle}</h2>
+    <p id="move-dialog-item"></p>
+    <p id="move-dialog-note" hidden></p>
+    <form method="dialog" id="move-form">
+      <label for="move-folder" data-i18n="moveFolderLabel">${CATALOGS.en.moveFolderLabel}</label>
+      <select id="move-folder" name="folder" aria-describedby="move-error"></select>
+      <div class="dialog-field" id="move-custom-wrap" hidden>
+        <label for="move-custom-input" data-i18n="moveCustomLabel">${CATALOGS.en.moveCustomLabel}</label>
+        <input type="text" id="move-custom-input" name="customFolder" autocomplete="off" data-i18n-placeholder="moveCustomPlaceholder" placeholder="${CATALOGS.en.moveCustomPlaceholder}" aria-describedby="move-error">
+      </div>
+      <p class="field-error" id="move-error" role="alert" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" class="btn" data-close data-i18n="cancel">${CATALOGS.en.cancel}</button>
+        <button type="submit" class="btn primary" data-i18n="moveConfirm">${CATALOGS.en.moveConfirm}</button>
       </div>
     </form>
   </dialog>
@@ -827,7 +931,7 @@ export function storageConsoleHtml(): string {
   </div>
 
   <div class="tray" id="tray">
-    <div class="tray-head"><span data-i18n="upTrayTitle">${CATALOGS.en.upTrayTitle}</span><span class="spacer"></span>
+    <div class="tray-head"><span id="tray-title" data-i18n="upTrayTitle">${CATALOGS.en.upTrayTitle}</span><span class="tray-progress" id="tray-progress" aria-live="polite"></span><span class="spacer"></span>
       <button type="button" class="icon-btn" id="tray-close" data-i18n-label="close" aria-label="${CATALOGS.en.close}" style="width:36px;height:36px">${svg(ICON_X, 15)}</button>
     </div>
     <ul class="tray-list" id="tray-list"></ul>
@@ -858,16 +962,39 @@ export function storageConsoleHtml(): string {
     return msg;
   }
   document.documentElement.lang = lang;
-  document.querySelectorAll("[data-i18n]").forEach(function (el) {
-    el.textContent = t(el.getAttribute("data-i18n"));
-  });
-  document.querySelectorAll("[data-i18n-placeholder]").forEach(function (el) {
-    el.setAttribute("placeholder", t(el.getAttribute("data-i18n-placeholder")));
-  });
-  document.querySelectorAll("[data-i18n-label]").forEach(function (el) {
-    el.setAttribute("aria-label", t(el.getAttribute("data-i18n-label")));
-    el.setAttribute("title", t(el.getAttribute("data-i18n-label")));
-  });
+  var langBtn = document.getElementById("lang-toggle");
+  function paintLang() {
+    if (!langBtn) return;
+    langBtn.textContent = lang.toUpperCase();
+    langBtn.setAttribute("aria-label", t("switchLang"));
+    langBtn.setAttribute("title", t("switchLang"));
+  }
+  function applyI18n() {
+    document.documentElement.lang = lang;
+    document.querySelectorAll("[data-i18n]").forEach(function (el) {
+      el.textContent = t(el.getAttribute("data-i18n"));
+    });
+    document.querySelectorAll("[data-i18n-placeholder]").forEach(function (el) {
+      el.setAttribute("placeholder", t(el.getAttribute("data-i18n-placeholder")));
+    });
+    document.querySelectorAll("[data-i18n-label]").forEach(function (el) {
+      el.setAttribute("aria-label", t(el.getAttribute("data-i18n-label")));
+      el.setAttribute("title", t(el.getAttribute("data-i18n-label")));
+    });
+    paintLang();
+  }
+  applyI18n();
+  if (langBtn) {
+    langBtn.addEventListener("click", function () {
+      lang = lang === "ja" ? "en" : "ja";
+      try { localStorage.setItem("takos-lang", lang); } catch (e) { /* ignore */ }
+      applyI18n();
+      renderUsage();
+      renderTrayHeader();
+      repaintUploadEntries();
+      render();
+    });
+  }
 
   // ---- Theme ----
   var SUN = ${JSON.stringify(svg(ICON_SUN, 18))};
@@ -1141,6 +1268,10 @@ export function storageConsoleHtml(): string {
     });
   }
   document.getElementById("load-more").addEventListener("click", function () { load(true); });
+  var searchLoadMoreBtn = document.getElementById("search-load-more");
+  if (searchLoadMoreBtn) {
+    searchLoadMoreBtn.addEventListener("click", function () { load(true); });
+  }
   if (refreshBtn) {
     refreshBtn.addEventListener("click", function () {
       if (!folderBusy && !cleanupBusy) load();
@@ -1199,6 +1330,9 @@ export function storageConsoleHtml(): string {
     var more = document.getElementById("load-more");
     more.hidden = !state.truncated;
     more.disabled = state.loading || state.failed || folderBusy || cleanupBusy;
+    var searchNotice = document.getElementById("search-truncated");
+    if (searchNotice) searchNotice.hidden = !(state.query && state.truncated && !state.failed);
+    if (searchLoadMoreBtn) searchLoadMoreBtn.disabled = state.loading || state.failed || folderBusy || cleanupBusy;
   }
   document.getElementById("cleanup-confirm").addEventListener("click", function () {
     var target = cleanupTarget;
@@ -1685,7 +1819,7 @@ export function storageConsoleHtml(): string {
         var first = focusable[0], last = focusable[focusable.length - 1];
         var inside = typeof previewEl.contains === "function" && previewEl.contains(document.activeElement);
         if (e.shiftKey) {
-          if (!inside || document.activeElement === first) { e.preventDefault(); last.focus(); }
+          if (!inside || document.activeElement === first || document.activeElement === previewEl) { e.preventDefault(); last.focus(); }
         } else if (!inside || document.activeElement === last) {
           e.preventDefault(); first.focus();
         }
@@ -1708,8 +1842,9 @@ export function storageConsoleHtml(): string {
     if (!item || folderBusy) return;
     menuTarget = item;
     itemMenu.querySelector('[data-action="download"]').hidden = item.type === "folder";
-    ["rename", "delete"].forEach(function (action) {
+    ["rename", "move", "delete"].forEach(function (action) {
       var button = itemMenu.querySelector('[data-action="' + action + '"]');
+      if (!button) return;
       button.disabled = item.type === "folder" ? !folderSnapshot(item) : !item.etag;
       button.title = button.disabled ? t(item.type === "folder" ? "folderUnavailable" : "errRevision", { count: ${MAX_FOLDER_OBJECTS}, size: fmtBytes(${MAX_FOLDER_TOTAL_BYTES}) }) : "";
     });
@@ -1773,52 +1908,192 @@ export function storageConsoleHtml(): string {
   if (searchClearBtn) {
     searchClearBtn.addEventListener("click", function () { clearSearch(true); });
   }
+  function isTextInput(el) {
+    if (!el) return false;
+    if (el.isContentEditable) return true;
+    var tag = el.tagName || "";
+    return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+  }
+  function hasOpenOverlay() {
+    if (previewEl.classList.contains("open") || newMenu.classList.contains("open") || itemMenu.classList.contains("open")) return true;
+    if (typeof document.querySelector === "function" && document.querySelector("dialog[open]")) return true;
+    return Boolean(
+      (nameDialog && nameDialog.open) ||
+      (moveDialog && moveDialog.open) ||
+      (deleteDialog && deleteDialog.open) ||
+      (cleanupDialog && cleanupDialog.open) ||
+      (folderResultDialog && folderResultDialog.open)
+    );
+  }
   document.addEventListener("keydown", function (e) {
-    if (e.key === "/" && !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing &&
-        document.activeElement !== searchInput &&
-        !previewEl.classList.contains("open") &&
-        !newMenu.classList.contains("open") &&
-        !itemMenu.classList.contains("open") &&
-        !(typeof document.querySelector === "function" && document.querySelector("dialog[open]")) &&
-        !(document.activeElement && /INPUT|TEXTAREA/.test(document.activeElement.tagName))) {
+    if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing || e.keyCode === 229) return;
+    if (hasOpenOverlay() || isTextInput(document.activeElement)) return;
+    if (e.key === "/" && document.activeElement !== searchInput) {
       e.preventDefault();
       searchInput.focus();
+      return;
+    }
+    if (e.key === "Backspace" && !e.shiftKey && state.nav === "files" && !state.query && state.path) {
+      e.preventDefault();
+      var trimmed = state.path.slice(0, -1);
+      var slash = trimmed.lastIndexOf("/");
+      state.path = slash >= 0 ? trimmed.slice(0, slash + 1) : "";
+      render();
+      if (mainEl && typeof mainEl.focus === "function") mainEl.focus();
+      return;
+    }
+    if (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Home" || e.key === "End") {
+      var container = state.view === "list" ? rowsEl : cardsEl;
+      if (!container || container.hidden || typeof container.querySelectorAll !== "function") return;
+      var links = Array.prototype.slice.call(container.querySelectorAll(".row-link"));
+      if (!links.length) return;
+      var active = document.activeElement;
+      var idx = links.indexOf(active);
+      var onItem = idx >= 0;
+      if (!onItem && active && active.classList && active.classList.contains("kebab")) {
+        var itemIdx = Number(active.getAttribute("data-item"));
+        if (!isNaN(itemIdx) && itemIdx >= 0 && itemIdx < links.length) {
+          idx = itemIdx;
+          onItem = true;
+        }
+      }
+      var canEnter = !active || active === mainEl || active === document.body;
+      if ((e.key === "Home" || e.key === "End") && !onItem) return;
+      if (!onItem && !canEnter) return;
+      e.preventDefault();
+      var nextIdx;
+      if (e.key === "Home") nextIdx = 0;
+      else if (e.key === "End") nextIdx = links.length - 1;
+      else if (onItem) nextIdx = e.key === "ArrowDown" ? Math.min(idx + 1, links.length - 1) : Math.max(idx - 1, 0);
+      else nextIdx = e.key === "ArrowDown" ? 0 : links.length - 1;
+      var targetLink = links[nextIdx];
+      if (targetLink && typeof targetLink.focus === "function") {
+        targetLink.focus();
+        if (typeof targetLink.scrollIntoView === "function") targetLink.scrollIntoView({ block: "nearest" });
+      }
     }
   });
 
   // ---- Upload ----
   var fileInput = document.getElementById("file-input");
   var trayList = document.getElementById("tray-list");
+  var trayProgress = document.getElementById("tray-progress");
+  var uploadEntries = [];
+  function renderTrayHeader() {
+    if (!trayProgress) return;
+    var total = uploadEntries.length;
+    if (!total) { trayProgress.textContent = ""; return; }
+    var done = 0, failed = 0;
+    uploadEntries.forEach(function (entry) {
+      if (entry.status === "done") done += 1;
+      else if (entry.status === "failed") failed += 1;
+    });
+    trayProgress.textContent = failed > 0
+      ? t("upProgressFailed", { done: done, total: total, failed: failed })
+      : t("upProgress", { done: done, total: total });
+  }
+  function paintUploadEntry(entry) {
+    if (entry.dismissed) return;
+    if (entry.status === "uploading") {
+      entry.statusEl.textContent = t("upUploading");
+      entry.statusEl.className = "tray-status";
+      entry.li.replaceChildren(entry.spinEl, entry.nameEl, entry.statusEl);
+    } else if (entry.status === "done") {
+      entry.statusEl.textContent = t("upDone");
+      entry.statusEl.className = "tray-status ok";
+      entry.li.replaceChildren(entry.nameEl, entry.statusEl);
+    } else {
+      entry.statusEl.textContent = t("upFailed");
+      entry.statusEl.className = "tray-status fail";
+      entry.retryBtn.textContent = t("upRetry");
+      entry.retryBtn.setAttribute("aria-label", t("upRetryFor", { name: entry.name }));
+      entry.li.replaceChildren(entry.nameEl, entry.statusEl, entry.retryBtn);
+    }
+  }
+  function repaintUploadEntries() {
+    uploadEntries.forEach(paintUploadEntry);
+  }
+  function startUploadEntry(entry, onSettled) {
+    var file = entry.file;
+    if (!file || entry.dismissed) return;
+    entry.status = "uploading";
+    paintUploadEntry(entry);
+    renderTrayHeader();
+    api(fileUrl(entry.path), {
+      method: "PUT",
+      headers: {
+        "content-type": file.type || "application/octet-stream",
+        "if-none-match": "*",
+      },
+      body: file,
+    }).then(function (r) {
+      checkMutationResponse(r);
+      entry.file = null;
+      if (!entry.dismissed) {
+        entry.status = "done";
+        paintUploadEntry(entry);
+        renderTrayHeader();
+      }
+      if (onSettled) onSettled(true);
+    }).catch(function (error) {
+      if (entry.dismissed) {
+        entry.file = null;
+      } else {
+        entry.status = "failed";
+        paintUploadEntry(entry);
+        renderTrayHeader();
+        toast(error && error.status === 412 ? t("errConflict") : t("errUpload", { name: entry.name }));
+      }
+      if (onSettled) onSettled(false, error && error.status);
+    });
+  }
   document.getElementById("tray-close").addEventListener("click", function () {
     tray.classList.remove("open");
+    uploadEntries.forEach(function (entry) {
+      entry.dismissed = true;
+      entry.file = null;
+    });
+    uploadEntries = [];
     trayList.innerHTML = "";
+    renderTrayHeader();
   });
   function uploadFiles(files) {
     if (!files || !files.length) return;
     tray.classList.add("open");
     var pending = files.length;
+    var basePath = state.path;
     Array.prototype.forEach.call(files, function (file) {
       var li = document.createElement("li");
-      li.innerHTML = '<span class="spin"></span><span class="tray-name">' + esc(file.name) + '</span><span class="tray-status"></span>';
+      var spinEl = document.createElement("span");
+      spinEl.className = "spin";
+      spinEl.setAttribute("aria-hidden", "true");
+      var nameEl = document.createElement("span");
+      nameEl.className = "tray-name";
+      nameEl.textContent = file.name;
+      var statusEl = document.createElement("span");
+      statusEl.className = "tray-status";
+      var retryBtn = document.createElement("button");
+      retryBtn.type = "button";
+      retryBtn.className = "tray-retry";
+      var entry = {
+        file: file,
+        name: file.name,
+        path: basePath + file.name,
+        status: "uploading",
+        dismissed: false,
+        li: li,
+        spinEl: spinEl,
+        nameEl: nameEl,
+        statusEl: statusEl,
+        retryBtn: retryBtn,
+      };
+      retryBtn.addEventListener("click", function () {
+        if (entry.dismissed || entry.status !== "failed" || !entry.file) return;
+        startUploadEntry(entry, function (ok, status) { if (ok || status === 412) load(); });
+      });
+      uploadEntries.push(entry);
       trayList.appendChild(li);
-      api(fileUrl(state.path + file.name), {
-        method: "PUT",
-        headers: {
-          "content-type": file.type || "application/octet-stream",
-          "if-none-match": "*",
-        },
-        body: file,
-      }).then(function (r) {
-        checkMutationResponse(r);
-        li.querySelector(".spin").remove();
-        li.querySelector(".tray-status").textContent = t("upDone");
-        li.querySelector(".tray-status").className = "tray-status ok";
-      }).catch(function (error) {
-        li.querySelector(".spin").remove();
-        li.querySelector(".tray-status").textContent = t("upFailed");
-        li.querySelector(".tray-status").className = "tray-status fail";
-        toast(error && error.status === 412 ? t("errConflict") : t("errUpload", { name: file.name }));
-      }).finally(function () {
+      startUploadEntry(entry, function () {
         pending -= 1;
         if (pending === 0) load();
       });
@@ -1861,6 +2136,24 @@ export function storageConsoleHtml(): string {
   var nameDialogNote = document.getElementById("name-dialog-note");
   var nameMode = null; // "folder" | "rename"
   var actionTarget = null;
+  var nameOpener = null;
+  var moveOpener = null;
+  var deleteOpener = null;
+
+  function restoreDialogFocus(opener) {
+    if (opener && typeof opener.focus === "function" && (typeof opener.isConnected !== "boolean" || opener.isConnected)) {
+      opener.focus();
+    } else if (mainEl && typeof mainEl.focus === "function") {
+      mainEl.focus();
+    }
+  }
+  if (nameDialog) {
+    nameDialog.addEventListener("close", function () {
+      var opener = nameOpener;
+      nameOpener = null;
+      restoreDialogFocus(opener);
+    });
+  }
 
   function setNameError(message) {
     if (nameError) {
@@ -1881,9 +2174,11 @@ export function storageConsoleHtml(): string {
   document.querySelectorAll("[data-new]").forEach(function (el) {
     el.addEventListener("click", function () {
       var mode = el.getAttribute("data-new");
+      var trigger = menuAnchor;
       closeMenus(false);
       if (mode === "upload") { fileInput.click(); return; }
       nameMode = "folder";
+      nameOpener = trigger || document.activeElement;
       nameDialogTitle.textContent = t("newFolderTitle");
       nameDialogNote.hidden = true;
       nameInput.value = "";
@@ -1897,6 +2192,126 @@ export function storageConsoleHtml(): string {
   var deleteDialog = document.getElementById("delete-dialog");
   var deleteBody = document.getElementById("delete-body");
   var deleteConfirm = document.getElementById("delete-confirm");
+  if (deleteDialog) {
+    deleteDialog.addEventListener("close", function () {
+      var opener = deleteOpener;
+      deleteOpener = null;
+      restoreDialogFocus(opener);
+    });
+  }
+  var cleanupDialog = document.getElementById("cleanup-dialog");
+  var folderResultDialog = document.getElementById("folder-result-dialog");
+  var moveDialog = document.getElementById("move-dialog");
+  if (moveDialog) {
+    moveDialog.addEventListener("close", function () {
+      var opener = moveOpener;
+      moveOpener = null;
+      restoreDialogFocus(opener);
+    });
+  }
+  var moveForm = document.getElementById("move-form");
+  var moveItemPrompt = document.getElementById("move-dialog-item");
+  var moveDialogNote = document.getElementById("move-dialog-note");
+  var moveFolderSelect = document.getElementById("move-folder");
+  var moveCustomWrap = document.getElementById("move-custom-wrap");
+  var moveCustomInput = document.getElementById("move-custom-input");
+  var moveError = document.getElementById("move-error");
+  var MOVE_CUSTOM = "__custom__";
+
+  function knownFolders() {
+    var seen = Object.create(null);
+    state.files.forEach(function (f) {
+      if (!f.path) return;
+      var parts = f.path.split("/");
+      var acc = "";
+      for (var i = 0; i < parts.length - 1; i++) {
+        if (!parts[i]) continue;
+        acc += parts[i] + "/";
+        seen[acc] = true;
+      }
+    });
+    return Object.keys(seen).sort(function (a, b) {
+      return a.localeCompare(b, lang === "ja" ? "ja" : undefined);
+    });
+  }
+  function parentFolderOf(item) {
+    if (item.type === "folder") {
+      var trimmed = item.path.slice(0, -1);
+      var folderSlash = trimmed.lastIndexOf("/");
+      return folderSlash >= 0 ? trimmed.slice(0, folderSlash + 1) : "";
+    }
+    var slash = item.path.lastIndexOf("/");
+    return slash >= 0 ? item.path.slice(0, slash + 1) : "";
+  }
+  function normalizeCustomFolder(raw) {
+    var trimmed = raw.trim();
+    if (!trimmed) return null;
+    if (trimmed.charAt(0) === "/" || trimmed.indexOf("\\\\") >= 0 || /[\\u0000-\\u001f\\u007f]/.test(trimmed)) return false;
+    var cleaned = trimmed.slice(-1) === "/" ? trimmed.slice(0, -1) : trimmed;
+    var segments = cleaned.split("/");
+    if (!segments.length) return false;
+    for (var i = 0; i < segments.length; i++) {
+      if (!segments[i] || segments[i] === "." || segments[i] === "..") return false;
+    }
+    return segments.join("/") + "/";
+  }
+  function setMoveError(message, field) {
+    if (moveError) {
+      moveError.textContent = message || "";
+      moveError.hidden = !message;
+    }
+    [moveFolderSelect, moveCustomInput].forEach(function (el) {
+      if (!el) return;
+      if (message && el === field && typeof el.setAttribute === "function") el.setAttribute("aria-invalid", "true");
+      else if (typeof el.removeAttribute === "function") el.removeAttribute("aria-invalid");
+    });
+    if (message && field && typeof field.focus === "function") field.focus();
+  }
+  function syncMoveCustom() {
+    if (!moveCustomWrap || !moveFolderSelect) return;
+    var custom = moveFolderSelect.value === MOVE_CUSTOM;
+    moveCustomWrap.hidden = !custom;
+    setMoveError("");
+    if (custom && moveCustomInput && typeof moveCustomInput.focus === "function") moveCustomInput.focus();
+  }
+  if (moveFolderSelect) moveFolderSelect.addEventListener("change", syncMoveCustom);
+  if (moveCustomInput) moveCustomInput.addEventListener("input", function () { setMoveError(""); });
+  function openMoveDialog(item, trigger) {
+    moveOpener = trigger || document.activeElement;
+    var currentParent = parentFolderOf(item);
+    if (moveItemPrompt) moveItemPrompt.textContent = t("moveItemPrompt", { name: item.name });
+    if (moveDialogNote) {
+      if (item.type === "folder" && actionEntries) {
+        moveDialogNote.textContent = t("moveFolderBody", { count: actionEntries.length });
+        moveDialogNote.hidden = false;
+      } else {
+        moveDialogNote.hidden = true;
+      }
+    }
+    if (moveFolderSelect) {
+      moveFolderSelect.replaceChildren();
+      var rootOpt = document.createElement("option");
+      rootOpt.value = "";
+      rootOpt.textContent = currentParent === "" ? t("moveCurrentSuffix", { label: t("home") }) : t("home");
+      moveFolderSelect.appendChild(rootOpt);
+      knownFolders().forEach(function (folder) {
+        if (item.type === "folder" && folder.indexOf(item.path) === 0) return;
+        var opt = document.createElement("option");
+        opt.value = folder;
+        opt.textContent = folder === currentParent ? t("moveCurrentSuffix", { label: folder }) : folder;
+        moveFolderSelect.appendChild(opt);
+      });
+      var customOpt = document.createElement("option");
+      customOpt.value = MOVE_CUSTOM;
+      customOpt.textContent = t("moveCustomOption");
+      moveFolderSelect.appendChild(customOpt);
+      moveFolderSelect.value = currentParent;
+    }
+    if (moveCustomInput) moveCustomInput.value = "";
+    if (moveCustomWrap) moveCustomWrap.hidden = true;
+    setMoveError("");
+    if (moveDialog) moveDialog.showModal();
+  }
 
   itemMenu.querySelectorAll("[data-action]").forEach(function (el) {
     el.addEventListener("click", function () {
@@ -1912,6 +2327,7 @@ export function storageConsoleHtml(): string {
       actionTarget = item;
       if (action === "rename") {
         nameMode = "rename";
+        nameOpener = trigger || document.activeElement;
         nameDialogTitle.textContent = t("renameTitle");
         if (item.type === "folder") {
           nameDialogNote.textContent = t("renameFolderBody", { count: actionEntries.length });
@@ -1925,7 +2341,10 @@ export function storageConsoleHtml(): string {
         setNameError("");
         nameDialog.showModal();
         nameInput.select();
+      } else if (action === "move") {
+        openMoveDialog(item, trigger);
       } else if (action === "delete") {
+        deleteOpener = trigger || document.activeElement;
         deleteBody.textContent = item.type === "folder"
           ? t("deleteFolderBody", { name: item.name, count: actionEntries.length })
           : t("deleteBody", { name: item.name });
@@ -1933,6 +2352,60 @@ export function storageConsoleHtml(): string {
       }
     });
   });
+
+  if (moveForm) {
+    moveForm.addEventListener("submit", function (e) {
+      if (folderBusy) { e.preventDefault(); return; }
+      var item = actionTarget;
+      if (!item) return;
+      var usingCustom = moveFolderSelect && moveFolderSelect.value === MOVE_CUSTOM;
+      var field = usingCustom ? moveCustomInput : moveFolderSelect;
+      var destFolder = "";
+      if (usingCustom) {
+        var normalized = normalizeCustomFolder(moveCustomInput ? moveCustomInput.value : "");
+        if (normalized === null) {
+          e.preventDefault();
+          setMoveError(t("movePathRequired"), moveCustomInput);
+          return;
+        }
+        if (normalized === false) {
+          e.preventDefault();
+          setMoveError(t("movePathInvalid"), moveCustomInput);
+          return;
+        }
+        destFolder = normalized;
+      } else if (moveFolderSelect) {
+        destFolder = moveFolderSelect.value;
+      }
+      if (destFolder === parentFolderOf(item)) {
+        e.preventDefault();
+        setMoveError(t("moveSameFolder"), field);
+        return;
+      }
+      if (item.type === "folder") {
+        var destFolderPath = destFolder + item.name + "/";
+        if (destFolderPath.indexOf(item.path) === 0 || item.path.indexOf(destFolderPath) === 0) {
+          e.preventDefault();
+          setMoveError(t("moveIntoSelf"), field);
+          return;
+        }
+        setMoveError("");
+        runFolderOperation("rename", item, destFolderPath);
+        return;
+      }
+      setMoveError("");
+      if (!item.etag) { toast(t("errRevision")); load(); return; }
+      api("/api/drive/move", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          source_path: item.path,
+          destination_path: destFolder + item.name,
+          source_etag: item.etag,
+        }),
+      }).then(checkMutationResponse).then(function () { load(); }).catch(mutationFailed);
+    });
+  }
 
   nameForm.addEventListener("submit", function (e) {
     if (folderBusy) { e.preventDefault(); return; }
