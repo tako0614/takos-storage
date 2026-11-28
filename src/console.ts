@@ -115,6 +115,38 @@ const CATALOGS = {
     itemRenamed: "Renamed.",
     itemMoved: "Moved.",
     itemDeleted: "Deleted.",
+    selectAll: "Select all items",
+    deselectAll: "Deselect all items",
+    selectItem: "Select {name}",
+    bulkRegionLabel: "Bulk actions",
+    bulkSelected: "{count} selected",
+    bulkClear: "Clear",
+    bulkMove: "Move",
+    bulkDelete: "Delete",
+    bulkMovePrompt: "Choose a destination for {count} selected items.",
+    bulkMoveNote:
+      "Move {count} reviewed entries to the destination folder. Items are moved individually with revision checks; partial results require review.",
+    bulkMoveCollision:
+      "Two or more selected items have the same name and would collide in the destination folder.",
+    bulkDeleteBody:
+      "Delete {count} selected items ({entries} reviewed entries) forever? This can’t be undone. Items are removed individually; conflicts can leave partial results that require review.",
+    bulkWorkingMove: "Moving {done} / {total}…",
+    bulkWorkingDelete: "Deleting {done} / {total}…",
+    bulkMoved: "Moved {count} items.",
+    bulkDeleted: "Deleted {count} items.",
+    bulkResultTitle: "Review batch operation",
+    bulkIncomplete:
+      "Some items could not be updated. Review the refreshed list before trying again; no automatic retry was sent.",
+    bulkUnknown:
+      "The batch result could not be confirmed. Review the refreshed list before trying again; no automatic retry was sent.",
+    shortcutsTitle: "Keyboard shortcuts",
+    shortcutSearch: "Focus search",
+    shortcutNewFolder: "New folder",
+    shortcutUpload: "Upload files",
+    shortcutNav: "Navigate items or preview files",
+    shortcutUp: "Go to parent folder",
+    shortcutEsc: "Close menu, preview, or clear selection",
+    shortcutHelp: "Show keyboard shortcuts",
     save: "OK",
     cancel: "Cancel",
     deleteTitle: "Delete forever?",
@@ -278,6 +310,38 @@ const CATALOGS = {
     itemRenamed: "名前を変更しました。",
     itemMoved: "移動しました。",
     itemDeleted: "削除しました。",
+    selectAll: "すべての項目を選択",
+    deselectAll: "すべての選択を解除",
+    selectItem: "「{name}」を選択",
+    bulkRegionLabel: "一括操作",
+    bulkSelected: "{count}件を選択中",
+    bulkClear: "選択解除",
+    bulkMove: "移動",
+    bulkDelete: "削除",
+    bulkMovePrompt: "選択した {count} 件の移動先を選んでください。",
+    bulkMoveNote:
+      "確認済み {count} 件を移動先フォルダへ移動します。1件ずつ版を確認しながら移動するため、競合すると途中までの結果が残り、確認が必要です。",
+    bulkMoveCollision:
+      "同じ名前の項目が複数選択されているため、同じ移動先フォルダへ移動できません。",
+    bulkDeleteBody:
+      "選択した {count} 件（確認済み {entries} 件）を完全に削除しますか？ 元に戻せません。1件ずつ削除するため、競合すると途中までの結果が残り、確認が必要です。",
+    bulkWorkingMove: "移動中 {done} / {total}…",
+    bulkWorkingDelete: "削除中 {done} / {total}…",
+    bulkMoved: "{count}件を移動しました。",
+    bulkDeleted: "{count}件を削除しました。",
+    bulkResultTitle: "一括操作の結果を確認",
+    bulkIncomplete:
+      "一部の項目を更新できませんでした。更新された一覧を確認してからやり直してください。自動再送はしていません。",
+    bulkUnknown:
+      "一括操作の結果を確認できませんでした。更新された一覧を確認してからやり直してください。自動再送はしていません。",
+    shortcutsTitle: "キーボードショートカット",
+    shortcutSearch: "検索欄にフォーカス",
+    shortcutNewFolder: "新しいフォルダを作成",
+    shortcutUpload: "ファイルをアップロード",
+    shortcutNav: "一覧の移動・プレビューの前/次",
+    shortcutUp: "親フォルダへ移動",
+    shortcutEsc: "メニュー・プレビューを閉じる / 選択解除",
+    shortcutHelp: "ショートカット一覧を表示",
     save: "OK",
     cancel: "キャンセル",
     deleteTitle: "完全に削除しますか？",
@@ -378,6 +442,10 @@ const ICON_CHEVRON_LEFT = '<path d="m15 18-6-6 6-6"/>';
 const ICON_CHEVRON_RIGHT = '<path d="m9 18 6-6-6-6"/>';
 const ICON_LOCK =
   '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>';
+const ICON_HELP =
+  '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 4.8.9c0 1.6-2.3 2-2.3 3.1"/><path d="M12 17h.01"/>';
+const ICON_CHECK = '<path d="M5 12.5 9.5 17 19 7.5"/>';
+const ICON_MINUS = '<path d="M6 12h12"/>';
 
 export function storageConsoleHtml(): string {
   return `<!doctype html>
@@ -622,12 +690,14 @@ export function storageConsoleHtml(): string {
     padding: 6px 16px; font-size: 12.5px; color: var(--text-soft); font-weight: 500;
     border-bottom: 1px solid var(--line); position: sticky; top: 56px; background: var(--panel); z-index: 4;
   }
+  .list-head-name { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
   .list-head .sortable { display: inline-flex; align-items: center; gap: 4px; border: none; background: none; padding: 4px 0; cursor: pointer; color: inherit; font: inherit; font-weight: 500; white-space: nowrap; }
   .list-head .sortable:hover { color: var(--text); }
   .list-head.as-grid {
     display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
     padding: 6px 16px 10px;
   }
+  .list-head.as-grid .list-head-name { display: contents; }
   .list-head.as-grid .sortable {
     padding: 5px 12px; border: 1px solid var(--line); border-radius: 999px;
   }
@@ -637,11 +707,49 @@ export function storageConsoleHtml(): string {
   }
   .list-head.as-grid > span { display: none; }
   .sort-arrow { font-size: 10px; }
+  .bulk-bar {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    margin: 4px 16px 8px; padding: 8px 12px;
+    border: 1px solid color-mix(in srgb, var(--active-text) 28%, var(--line));
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--active-pill) 72%, var(--panel));
+  }
+  .bulk-count { font-size: 13.5px; font-weight: 600; color: var(--active-text); margin-right: auto; white-space: nowrap; }
+  .bulk-actions { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .bulk-bar .btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; font-size: 13.5px; }
+  .bulk-bar .btn:not(.danger) { border: 1px solid color-mix(in srgb, var(--active-text) 28%, var(--line)); background: var(--panel); }
+  .select-check {
+    position: relative; z-index: 2; flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 30px; height: 30px; padding: 0; border: none; border-radius: 8px;
+    background: transparent; color: var(--text-soft); cursor: pointer;
+  }
+  .select-check:hover { background: color-mix(in srgb, var(--text-soft) 16%, transparent); }
+  .select-check .check-box {
+    width: 18px; height: 18px; border-radius: 5px;
+    border: 1.5px solid var(--text-soft); background: var(--panel);
+    display: inline-flex; align-items: center; justify-content: center;
+    color: transparent; transition: background .12s, border-color .12s, color .12s;
+  }
+  .select-check[aria-checked="true"] .check-box,
+  .select-check[aria-checked="mixed"] .check-box {
+    background: var(--active-text); border-color: var(--active-text); color: var(--panel);
+  }
+  .select-check .check-mark, .select-check .check-mixed { display: none; }
+  .select-check[aria-checked="true"] .check-mark { display: inline-flex; }
+  .select-check[aria-checked="mixed"] .check-mixed { display: inline-flex; }
   .rows { list-style: none; margin: 0; padding: 0; }
   .row { position: relative; padding: 0 16px; height: 48px; border-bottom: 1px solid var(--line); }
   .row:hover { background: var(--hover); }
+  .row.selected { background: color-mix(in srgb, var(--active-pill) 52%, var(--panel)); }
+  .row.selected:hover { background: color-mix(in srgb, var(--active-pill) 70%, var(--panel)); }
+  .row.is-dragging, .card.is-dragging { opacity: .48; }
+  .drop-target {
+    outline: 2px dashed var(--accent) !important; outline-offset: -2px;
+    background: var(--active-pill) !important;
+  }
   .row-link { position: absolute; inset: 0; border: none; background: transparent; cursor: pointer; border-radius: 4px; z-index: 1; }
-  .row-name { display: flex; align-items: center; gap: 12px; min-width: 0; font-size: 14px; }
+  .row-name { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: 14px; }
   .row-name .name-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .row-name .name-sub { display: block; font-size: 12px; color: var(--text-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .row-name .row-mobile-size { display: none; }
@@ -657,13 +765,23 @@ export function storageConsoleHtml(): string {
   .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(208px, 1fr)); gap: 14px; padding: 12px 16px; }
   .card {
     position: relative; border: 1px solid var(--line); border-radius: 12px; overflow: hidden;
-    background: var(--panel); transition: box-shadow .12s, background .12s;
+    background: var(--panel); transition: box-shadow .12s, background .12s, border-color .12s;
   }
   .card:hover { background: var(--hover); box-shadow: var(--shadow); }
+  .card.selected { border-color: var(--active-text); background: color-mix(in srgb, var(--active-pill) 45%, var(--panel)); }
+  .card-check {
+    position: absolute; top: 6px; left: 6px; z-index: 2;
+    background: color-mix(in srgb, var(--panel) 84%, transparent);
+    border-radius: 8px;
+  }
   .card-thumb {
-    height: 110px; display: flex; align-items: center; justify-content: center;
+    position: relative; height: 110px; display: flex; align-items: center; justify-content: center;
     background: color-mix(in srgb, var(--card-accent, var(--accent)) 9%, var(--bg));
-    color: var(--card-accent, var(--accent));
+    color: var(--card-accent, var(--accent)); overflow: hidden;
+  }
+  .card-thumb-img {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: cover; display: block; background: var(--bg);
   }
   .card-foot { display: flex; align-items: center; gap: 8px; padding: 10px 6px 10px 12px; }
   .card-meta { flex: 1; min-width: 0; }
@@ -732,6 +850,16 @@ export function storageConsoleHtml(): string {
   .btn.danger { background: #b91c1c; color: #fff; }
   .btn.danger:hover { filter: brightness(1.08); }
   .btn.danger:disabled:hover { background: #b91c1c; }
+  .shortcut-list { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 10px 16px; align-items: center; }
+  .shortcut-list dt { margin: 0; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+  .shortcut-list dd { margin: 0; font-size: 13.5px; color: var(--text-soft); line-height: 1.4; }
+  kbd {
+    display: inline-flex; align-items: center; justify-content: center; min-width: 24px;
+    padding: 2px 7px; border-radius: 6px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--text);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px; font-weight: 600; line-height: 1.4;
+  }
 
   /* ---- Preview overlay ---- */
   .preview {
@@ -836,8 +964,14 @@ export function storageConsoleHtml(): string {
     button.crumb { min-height: 44px; min-width: 44px; display: inline-flex; align-items: center; justify-content: center; }
     .tray-retry { min-height: 44px; padding: 10px 14px; }
     .seg { width: 44px; height: 44px; }
-    .list-head .sortable { min-height: 44px; padding: 8px 4px; }
-    .list-head.as-grid .sortable { min-height: 44px; padding: 8px 14px; }
+    .list-head .sortable { min-width: 44px; min-height: 44px; padding: 8px 4px; justify-content: flex-start; }
+    .list-head.as-grid .sortable { min-width: 44px; min-height: 44px; padding: 8px 14px; justify-content: center; }
+    .select-check { width: 44px; height: 44px; }
+    .row .select-check { margin: 0 -6px 0 -10px; }
+    .list-head:not(.as-grid) .select-check { margin: 0 -6px 0 -10px; }
+    .card-check { top: 4px; left: 4px; }
+    .bulk-bar { margin: 4px 10px 8px; padding: 8px 10px; }
+    .bulk-bar .btn { min-height: 44px; padding: 8px 12px; }
     .kebab { width: 44px; height: 44px; }
     .row { min-height: 52px; height: auto; padding: 4px 12px 4px 16px; }
     .btn { min-height: 44px; padding: 10px 18px; display: inline-flex; align-items: center; justify-content: center; }
@@ -854,6 +988,7 @@ export function storageConsoleHtml(): string {
     .crumb { padding: 4px 6px; }
     .list-head, .row { grid-template-columns: minmax(0,1fr) 108px 44px; }
     .list-head:not(.as-grid) .sortable.col-size, .row-size { display: none; }
+    .row-name { gap: 6px; }
     .row-name .row-mobile-size { display: block; }
     .cards, .skel-cards { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
     .card-thumb { height: 84px; }
@@ -861,7 +996,7 @@ export function storageConsoleHtml(): string {
   }
   @media (prefers-reduced-motion: reduce) {
     .spin, .icon-btn.spinning svg, .skel-box { animation: none; }
-    .card, .toast { transition: none; }
+    .card, .toast, .select-check .check-box { transition: none; }
   }
 </style>
 </head>
@@ -892,6 +1027,7 @@ export function storageConsoleHtml(): string {
     <div class="header-actions">
       <span class="user-chip" id="user-chip" role="img" hidden><span class="avatar" id="user-avatar" aria-hidden="true"></span><span class="user-name" id="user-name"></span></span>
       <button type="button" class="text-btn" id="logout" hidden data-i18n="logout">${CATALOGS.en.logout}</button>
+      <button id="shortcuts-btn" class="icon-btn" type="button" data-i18n-label="shortcutsTitle" aria-label="${CATALOGS.en.shortcutsTitle}" title="${CATALOGS.en.shortcutsTitle}">${svg(ICON_HELP, 18)}</button>
       <button id="lang-toggle" class="lang-btn" type="button" aria-label="${CATALOGS.en.switchLang}" title="${CATALOGS.en.switchLang}">EN</button>
       <button id="theme-toggle" class="icon-btn" type="button" data-i18n-label="toggleTheme" aria-label="${CATALOGS.en.toggleTheme}"></button>
     </div>
@@ -947,8 +1083,19 @@ export function storageConsoleHtml(): string {
         <span class="search-notice-text" data-i18n="searchTruncated">${CATALOGS.en.searchTruncated}</span>
         <button type="button" class="btn primary" id="search-load-more" data-i18n="loadMore">${CATALOGS.en.loadMore}</button>
       </div>
+      <div id="bulk-bar" class="bulk-bar" role="region" data-i18n-label="bulkRegionLabel" aria-label="${CATALOGS.en.bulkRegionLabel}" hidden>
+        <span id="bulk-count" class="bulk-count" role="status" aria-live="polite"></span>
+        <div class="bulk-actions">
+          <button type="button" class="btn" id="bulk-move">${svg(ICON_MOVE, 16)}<span data-i18n="bulkMove">${CATALOGS.en.bulkMove}</span></button>
+          <button type="button" class="btn danger" id="bulk-delete" data-i18n="bulkDelete">${CATALOGS.en.bulkDelete}</button>
+          <button type="button" class="btn" id="bulk-clear" data-i18n="bulkClear">${CATALOGS.en.bulkClear}</button>
+        </div>
+      </div>
       <div class="list-head" id="list-head" role="group" data-i18n-label="sortLabel" aria-label="${CATALOGS.en.sortLabel}">
-        <button type="button" class="sortable" data-sort="name" aria-pressed="false" aria-label="${CATALOGS.en.sortAction.replace("{label}", CATALOGS.en.colName)}"><span data-i18n="colName">${CATALOGS.en.colName}</span><span class="sort-arrow" data-arrow="name" aria-hidden="true"></span></button>
+        <div class="list-head-name">
+          <button type="button" role="checkbox" class="select-check" id="select-all" aria-checked="false" aria-label="${CATALOGS.en.selectAll}" title="${CATALOGS.en.selectAll}"><span class="check-box" aria-hidden="true"><span class="check-mark">${svg(ICON_CHECK, 13)}</span><span class="check-mixed">${svg(ICON_MINUS, 13)}</span></span></button>
+          <button type="button" class="sortable" data-sort="name" aria-pressed="false" aria-label="${CATALOGS.en.sortAction.replace("{label}", CATALOGS.en.colName)}"><span data-i18n="colName">${CATALOGS.en.colName}</span><span class="sort-arrow" data-arrow="name" aria-hidden="true"></span></button>
+        </div>
         <button type="button" class="sortable col-size" data-sort="size" aria-pressed="false" aria-label="${CATALOGS.en.sortAction.replace("{label}", CATALOGS.en.colSize)}"><span data-i18n="colSize">${CATALOGS.en.colSize}</span><span class="sort-arrow" data-arrow="size" aria-hidden="true"></span></button>
         <button type="button" class="sortable" data-sort="uploaded" aria-pressed="true" aria-label="${CATALOGS.en.sortBy.replace("{label}", CATALOGS.en.colUpdated).replace("{dir}", CATALOGS.en.sortDesc)}"><span data-i18n="colUpdated">${CATALOGS.en.colUpdated}</span><span class="sort-arrow" data-arrow="uploaded" aria-hidden="true">▼</span></button>
         <span></span>
@@ -1037,6 +1184,22 @@ export function storageConsoleHtml(): string {
     <pre id="folder-result-paths" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:40vh;overflow:auto"></pre>
     <div class="dialog-actions">
       <button type="button" class="btn" data-close data-i18n="folderDismiss">${CATALOGS.en.folderDismiss}</button>
+    </div>
+  </dialog>
+
+  <dialog id="shortcuts-dialog" aria-labelledby="shortcuts-title">
+    <h2 id="shortcuts-title" data-i18n="shortcutsTitle">${CATALOGS.en.shortcutsTitle}</h2>
+    <dl class="shortcut-list">
+      <dt><kbd>/</kbd></dt><dd data-i18n="shortcutSearch">${CATALOGS.en.shortcutSearch}</dd>
+      <dt><kbd>n</kbd></dt><dd data-i18n="shortcutNewFolder">${CATALOGS.en.shortcutNewFolder}</dd>
+      <dt><kbd>u</kbd></dt><dd data-i18n="shortcutUpload">${CATALOGS.en.shortcutUpload}</dd>
+      <dt><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd></dt><dd data-i18n="shortcutNav">${CATALOGS.en.shortcutNav}</dd>
+      <dt><kbd>Backspace</kbd></dt><dd data-i18n="shortcutUp">${CATALOGS.en.shortcutUp}</dd>
+      <dt><kbd>Esc</kbd></dt><dd data-i18n="shortcutEsc">${CATALOGS.en.shortcutEsc}</dd>
+      <dt><kbd>?</kbd></dt><dd data-i18n="shortcutHelp">${CATALOGS.en.shortcutHelp}</dd>
+    </dl>
+    <div class="dialog-actions">
+      <button type="button" class="btn primary" data-close data-i18n="close">${CATALOGS.en.close}</button>
     </div>
   </dialog>
 
@@ -1176,6 +1339,15 @@ export function storageConsoleHtml(): string {
   var searchClearBtn = document.getElementById("q-clear");
   var refreshBtn = document.getElementById("refresh-btn");
   var brandLink = document.getElementById("brand-link");
+  var bulkBarEl = document.getElementById("bulk-bar");
+  var bulkCountEl = document.getElementById("bulk-count");
+  var bulkMoveBtn = document.getElementById("bulk-move");
+  var bulkDeleteBtn = document.getElementById("bulk-delete");
+  var bulkClearBtn = document.getElementById("bulk-clear");
+  var selectAllBtn = document.getElementById("select-all");
+  var shortcutsBtn = document.getElementById("shortcuts-btn");
+  var shortcutsDialog = document.getElementById("shortcuts-dialog");
+  var CHECK_SVG = ${JSON.stringify(svg(ICON_CHECK, 13))};
   var currentVisible = [];
   var currentUserName = "";
   var folderBusy = false;
@@ -1184,7 +1356,270 @@ export function storageConsoleHtml(): string {
   var cleanupVerified = null;
   var cleanupOpener = null;
   var folderResultOpener = null;
+  var shortcutsOpener = null;
   var actionEntries = null;
+  var selectedPaths = Object.create(null);
+  var lastSelectedIndex = -1;
+  var bulkActionPlan = null;
+  var dragItems = null;
+  var activeDropTarget = null;
+
+  // ---- URL state & history ----
+  function normalizeUrlFolder(raw) {
+    if (typeof raw !== "string") return "";
+    var trimmed = raw.trim();
+    if (!trimmed) return "";
+    if (trimmed.charAt(0) === "/" || trimmed.indexOf("\\\\") >= 0 || /[\\u0000-\\u001f\\u007f]/.test(trimmed)) return "";
+    var cleaned = trimmed.slice(-1) === "/" ? trimmed.slice(0, -1) : trimmed;
+    var segments = cleaned.split("/");
+    if (!segments.length) return "";
+    for (var i = 0; i < segments.length; i++) {
+      if (!segments[i] || segments[i] === "." || segments[i] === "..") return "";
+    }
+    return segments.join("/") + "/";
+  }
+  function readUrlState() {
+    var search = (typeof location !== "undefined" && location && typeof location.search === "string") ? location.search : "";
+    if (!search || typeof URLSearchParams !== "function") {
+      return { nav: "files", path: "", query: "" };
+    }
+    var params;
+    try { params = new URLSearchParams(search); } catch (e) { return { nav: "files", path: "", query: "" }; }
+    var rawView = params.get("view");
+    var nav = rawView === "recent" ? "recent" : "files";
+    var path = nav === "files" ? normalizeUrlFolder(params.get("path") || "") : "";
+    var query = (params.get("q") || "").trim();
+    return { nav: nav, path: path, query: query };
+  }
+  function applyUrlState() {
+    var parsed = readUrlState();
+    state.nav = parsed.nav;
+    state.path = parsed.path;
+    state.query = parsed.query;
+    if (searchInput) searchInput.value = parsed.query;
+    if (state.nav === "recent" && !state.query) {
+      state.sort = { key: "uploaded", dir: "desc" };
+    }
+  }
+  function buildUrlSearch() {
+    var parts = [];
+    if (state.nav === "recent") {
+      parts.push("view=recent");
+    } else if (state.path) {
+      parts.push("path=" + encodeURIComponent(state.path));
+    }
+    if (state.query) {
+      parts.push("q=" + encodeURIComponent(state.query));
+    }
+    return parts.length ? "?" + parts.join("&") : "";
+  }
+  function syncUrl(mode) {
+    if (typeof history === "undefined" || !history || typeof location === "undefined" || !location) return;
+    var fn = mode === "replace" ? history.replaceState : history.pushState;
+    if (typeof fn !== "function") return;
+    var nextSearch = buildUrlSearch();
+    var currentSearch = typeof location.search === "string" ? location.search : "";
+    if (nextSearch === currentSearch) return;
+    var pathname = typeof location.pathname === "string" && location.pathname ? location.pathname : "/";
+    try {
+      fn.call(history, null, "", pathname + nextSearch);
+    } catch (e) { /* ignore restricted origins */ }
+  }
+  applyUrlState();
+
+  // ---- Lazy grid thumbnails (strict blob URL lifecycle & bounds) ----
+  var THUMB_MAX_BYTES = 4 * 1024 * 1024;
+  var THUMB_MAX_CONCURRENCY = 3;
+  var THUMB_MAX_ENTRIES = 48;
+  var thumbUrls = Object.create(null);
+  var thumbOrder = [];
+  var thumbQueue = [];
+  var thumbInFlight = 0;
+  var thumbGeneration = 0;
+  var thumbObserver = null;
+  function isThumbEligible(item) {
+    return Boolean(
+      item &&
+      item.type === "file" &&
+      PREVIEW_IMAGE_EXT[extOf(item.name)] &&
+      typeof item.size === "number" &&
+      item.size > 0 &&
+      item.size <= THUMB_MAX_BYTES
+    );
+  }
+  function thumbKeyFor(item) {
+    return item.path + "\\u0000" + (item.etag || "");
+  }
+  function revokeThumbKey(key) {
+    if (!thumbUrls[key]) return;
+    var url = thumbUrls[key];
+    delete thumbUrls[key];
+    var pos = thumbOrder.indexOf(key);
+    if (pos >= 0) thumbOrder.splice(pos, 1);
+    try { URL.revokeObjectURL(url); } catch (e) { /* ignore */ }
+  }
+  function clearThumbs(keepKeys) {
+    if (thumbObserver && typeof thumbObserver.disconnect === "function") {
+      thumbObserver.disconnect();
+    }
+    thumbObserver = null;
+    thumbQueue = [];
+    thumbGeneration += 1;
+    var existing = thumbOrder.slice();
+    existing.forEach(function (key) {
+      if (!keepKeys || !keepKeys[key]) revokeThumbKey(key);
+    });
+  }
+  function mountThumbImg(thumbEl, url, cacheKey) {
+    if (!thumbEl || (typeof thumbEl.isConnected === "boolean" && !thumbEl.isConnected)) return;
+    var existingImg = typeof thumbEl.querySelector === "function" ? thumbEl.querySelector(".card-thumb-img") : null;
+    if (existingImg) return;
+    var img = document.createElement("img");
+    img.className = "card-thumb-img";
+    img.alt = "";
+    img.src = url;
+    img.addEventListener("error", function () {
+      if (thumbUrls[cacheKey] === url) revokeThumbKey(cacheKey);
+      if (typeof img.remove === "function") img.remove();
+    });
+    thumbEl.appendChild(img);
+  }
+  function drainThumbQueue() {
+    while (thumbInFlight < THUMB_MAX_CONCURRENCY && thumbQueue.length) {
+      var task = thumbQueue.shift();
+      if (!task || task.gen !== thumbGeneration) continue;
+      if (typeof task.el.isConnected === "boolean" && !task.el.isConnected) continue;
+      if (thumbUrls[task.cacheKey]) {
+        mountThumbImg(task.el, thumbUrls[task.cacheKey], task.cacheKey);
+        continue;
+      }
+      (function (job) {
+        thumbInFlight += 1;
+        function isCurrentThumb() {
+          return job.gen === thumbGeneration && (typeof job.el.isConnected !== "boolean" || job.el.isConnected);
+        }
+        api(fileUrl(job.path), null, isCurrentThumb).then(function (r) {
+          if (!isCurrentThumb() || !r || !r.ok) return null;
+          return r.blob();
+        }).then(function (blob) {
+          if (!blob || !isCurrentThumb()) return;
+          if (thumbUrls[job.cacheKey]) {
+            mountThumbImg(job.el, thumbUrls[job.cacheKey], job.cacheKey);
+            return;
+          }
+          while (thumbOrder.length >= THUMB_MAX_ENTRIES) {
+            revokeThumbKey(thumbOrder[0]);
+          }
+          var url = URL.createObjectURL(blob);
+          thumbUrls[job.cacheKey] = url;
+          thumbOrder.push(job.cacheKey);
+          mountThumbImg(job.el, url, job.cacheKey);
+        }).catch(function () {
+          /* keep icon fallback */
+        }).finally(function () {
+          thumbInFlight = Math.max(0, thumbInFlight - 1);
+          drainThumbQueue();
+        });
+      })(task);
+    }
+  }
+  function observeGridThumbs(entries) {
+    if (!entries.length) return;
+    var gen = thumbGeneration;
+    var pending = [];
+    entries.forEach(function (entry) {
+      if (thumbUrls[entry.cacheKey]) {
+        mountThumbImg(entry.el, thumbUrls[entry.cacheKey], entry.cacheKey);
+      } else {
+        pending.push(entry);
+      }
+    });
+    if (!pending.length || typeof IntersectionObserver !== "function") return;
+    var byEl = [];
+    thumbObserver = new IntersectionObserver(function (obsEntries) {
+      if (gen !== thumbGeneration) return;
+      obsEntries.forEach(function (obsEntry) {
+        if (!obsEntry.isIntersecting) return;
+        if (thumbObserver && typeof thumbObserver.unobserve === "function") {
+          thumbObserver.unobserve(obsEntry.target);
+        }
+        for (var i = 0; i < byEl.length; i++) {
+          if (byEl[i].el === obsEntry.target && !byEl[i].queued) {
+            byEl[i].queued = true;
+            thumbQueue.push({ el: byEl[i].el, path: byEl[i].path, cacheKey: byEl[i].cacheKey, gen: gen });
+            break;
+          }
+        }
+      });
+      drainThumbQueue();
+    }, { root: mainEl || null, rootMargin: "120px" });
+    pending.forEach(function (entry) {
+      byEl.push({ el: entry.el, path: entry.path, cacheKey: entry.cacheKey, queued: false });
+      thumbObserver.observe(entry.el);
+    });
+  }
+  window.addEventListener("pagehide", function () { clearThumbs(null); });
+  window.addEventListener("popstate", function () {
+    clearTimeout(searchTimer);
+    closeMenus(false);
+    closePreview(false);
+    clearSelection(false);
+    applyUrlState();
+    render();
+  });
+
+  // ---- Selection ----
+  function selectedVisibleItems() {
+    return currentVisible.filter(function (item) { return Boolean(selectedPaths[item.path]); });
+  }
+  function selectedCount() {
+    return selectedVisibleItems().length;
+  }
+  function pruneSelection(items) {
+    var allowed = Object.create(null);
+    items.forEach(function (item) { allowed[item.path] = true; });
+    Object.keys(selectedPaths).forEach(function (path) {
+      if (!allowed[path]) delete selectedPaths[path];
+    });
+  }
+  function clearSelection(syncUi) {
+    selectedPaths = Object.create(null);
+    lastSelectedIndex = -1;
+    if (syncUi) syncSelectionUi();
+  }
+  function syncSelectionUi() {
+    var selected = selectedVisibleItems();
+    var count = selected.length;
+    var total = currentVisible.length;
+    var busy = state.loading || state.failed || folderBusy || cleanupBusy;
+    if (bulkBarEl) bulkBarEl.hidden = count === 0 || state.loading || state.failed;
+    if (bulkCountEl) bulkCountEl.textContent = count ? t("bulkSelected", { count: count }) : "";
+    if (bulkMoveBtn) bulkMoveBtn.disabled = busy || count === 0;
+    if (bulkDeleteBtn) bulkDeleteBtn.disabled = busy || count === 0;
+    if (bulkClearBtn) bulkClearBtn.disabled = count === 0;
+    if (selectAllBtn) {
+      var allSelected = total > 0 && count === total;
+      selectAllBtn.setAttribute("aria-checked", count === 0 ? "false" : (allSelected ? "true" : "mixed"));
+      var allLabel = t(allSelected ? "deselectAll" : "selectAll");
+      selectAllBtn.setAttribute("aria-label", allLabel);
+      selectAllBtn.setAttribute("title", allLabel);
+      selectAllBtn.disabled = total === 0 || busy;
+    }
+    var container = state.view === "list" ? rowsEl : cardsEl;
+    if (container && typeof container.querySelectorAll === "function") {
+      container.querySelectorAll(".select-check[data-select]").forEach(function (btn) {
+        var idx = Number(btn.getAttribute("data-select"));
+        var item = currentVisible[idx];
+        var isSelected = Boolean(item && selectedPaths[item.path]);
+        btn.setAttribute("aria-checked", String(isSelected));
+        var parent = btn.closest ? btn.closest(".row, .card") : null;
+        if (parent && parent.classList) {
+          if (isSelected) parent.classList.add("selected");
+          else parent.classList.remove("selected");
+        }
+      });
+    }
+  }
 
   function paintUserChip() {
     if (!currentUserName) return;
@@ -1308,6 +1743,142 @@ export function storageConsoleHtml(): string {
       "\\n\\n" + t("folderRemaining") + "\\n" + remaining.join("\\n");
     folderResultOpener = document.activeElement;
     document.getElementById("folder-result-dialog").showModal();
+  }
+  function bulkResult(completed, remaining, unknown) {
+    document.getElementById("folder-result-title").textContent = t("bulkResultTitle");
+    document.getElementById("folder-result-message").textContent = t(unknown ? "bulkUnknown" : "bulkIncomplete");
+    document.getElementById("folder-result-paths").textContent =
+      t("folderCompleted", { count: completed.length }) + "\\n" + completed.join("\\n") +
+      "\\n\\n" + t("folderRemaining") + "\\n" + remaining.join("\\n");
+    folderResultOpener = document.activeElement;
+    document.getElementById("folder-result-dialog").showModal();
+  }
+  function buildBulkPlan(items) {
+    if (folderBusy || cleanupBusy || state.loading || state.failed || !items || !items.length) return null;
+    var plan = [];
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
+      if (item.type === "folder") {
+        var entries = folderSnapshot(item);
+        if (!entries) {
+          folderUnavailable();
+          return null;
+        }
+        plan.push({ item: item, entries: entries });
+      } else {
+        if (!item.etag) {
+          toast(t("errRevision"));
+          return null;
+        }
+        plan.push({ item: item, entries: null });
+      }
+    }
+    return plan;
+  }
+  function runBulkOperation(operation, plan, destination) {
+    if (folderBusy || cleanupBusy || !plan || !plan.length) return;
+    folderBusy = true;
+    renderPending();
+    syncSelectionUi();
+    var progress = document.getElementById("folder-progress");
+    var total = plan.length;
+    var completed = [];
+    var failed = [];
+    var remaining = [];
+    var uncertain = false;
+    function showStepProgress(doneCount) {
+      progress.textContent = t(operation === "move" ? "bulkWorkingMove" : "bulkWorkingDelete", { done: doneCount, total: total });
+      progress.hidden = false;
+      progress.classList.add("show");
+    }
+    showStepProgress(0);
+    function collectRest(startIdx) {
+      for (var j = startIdx; j < plan.length; j++) {
+        var restStep = plan[j];
+        if (restStep.entries) {
+          restStep.entries.forEach(function (entry) { remaining.push(entry.path); });
+        } else {
+          remaining.push(restStep.item.path);
+        }
+      }
+    }
+    function runStep(index) {
+      if (index >= plan.length) return Promise.resolve();
+      showStepProgress(index);
+      var step = plan[index];
+      var item = step.item;
+      if (item.type === "folder") {
+        var folderInput = { operation: operation === "move" ? "rename" : "delete", source_path: item.path, entries: step.entries };
+        if (operation === "move") folderInput.destination_path = destination + item.name + "/";
+        return api("/api/drive/folder", {
+          method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(folderInput),
+        }).then(function (response) {
+          return response.json().then(function (data) {
+            if (response.ok && data && data.ok === true && Array.isArray(data.completed) && data.completed.length === step.entries.length) {
+              completed.push(item.path);
+              return runStep(index + 1);
+            }
+            if (data && data.error === "folder_operation_incomplete") {
+              if (Array.isArray(data.completed)) data.completed.forEach(function (p) { completed.push(p); });
+              if (Array.isArray(data.remaining)) data.remaining.forEach(function (p) { remaining.push(p); });
+              if (data.outcome_uncertain) uncertain = true;
+              collectRest(index + 1);
+              return;
+            }
+            if (response.status === 404 || response.status === 409 || response.status === 412 || response.status === 413) {
+              failed.push(item.path);
+              return runStep(index + 1);
+            }
+            uncertain = true;
+            collectRest(index);
+          });
+        }).catch(function () {
+          uncertain = true;
+          collectRest(index);
+        });
+      }
+      var reqPromise = operation === "move"
+        ? api("/api/drive/move", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            source_path: item.path,
+            destination_path: destination + item.name,
+            source_etag: item.etag,
+          }),
+        })
+        : api(fileUrl(item.path), {
+          method: "DELETE",
+          headers: { "if-match": item.etag },
+        });
+      return reqPromise.then(function (response) {
+        if (response.ok) {
+          completed.push(item.path);
+          return runStep(index + 1);
+        }
+        if (response.status === 404 || response.status === 409 || response.status === 412 || response.status === 413) {
+          failed.push(item.path);
+          return runStep(index + 1);
+        }
+        uncertain = true;
+        collectRest(index);
+      }).catch(function () {
+        uncertain = true;
+        collectRest(index);
+      });
+    }
+    runStep(0).finally(function () {
+      folderBusy = false;
+      progress.classList.remove("show");
+      progress.hidden = true;
+      clearSelection(false);
+      if (failed.length === 0 && remaining.length === 0 && !uncertain) {
+        toast(t(operation === "move" ? "bulkMoved" : "bulkDeleted", { count: completed.length }));
+      } else {
+        bulkResult(completed, failed.concat(remaining), uncertain);
+      }
+      load();
+    });
   }
   function runFolderOperation(operation, item, destination) {
     if (folderBusy || cleanupBusy || !actionEntries) return;
@@ -1554,6 +2125,7 @@ export function storageConsoleHtml(): string {
       else refreshBtn.classList.remove("spinning");
     }
     if (mainEl) mainEl.setAttribute("aria-busy", state.loading ? "true" : "false");
+    syncSelectionUi();
   }
   document.getElementById("cleanup-confirm").addEventListener("click", function () {
     var target = cleanupTarget;
@@ -1694,8 +2266,11 @@ export function storageConsoleHtml(): string {
     }
     var home = document.createElement("button");
     home.type = "button"; home.className = "crumb"; home.textContent = t("home");
+    home.setAttribute("data-folder-path", "");
     home.addEventListener("click", function () {
+      clearSelection(false);
       state.path = "";
+      syncUrl("push");
       render();
       if (mainEl && typeof mainEl.focus === "function") mainEl.focus();
     });
@@ -1716,8 +2291,11 @@ export function storageConsoleHtml(): string {
       } else {
         var btn = document.createElement("button");
         btn.type = "button"; btn.className = "crumb"; btn.textContent = part;
+        btn.setAttribute("data-folder-path", target);
         btn.addEventListener("click", function () {
+          clearSelection(false);
           state.path = target;
+          syncUrl("push");
           render();
           if (mainEl && typeof mainEl.focus === "function") mainEl.focus();
         });
@@ -1803,8 +2381,11 @@ export function storageConsoleHtml(): string {
     cardsEl.innerHTML = "";
     stateEl.hidden = true;
     currentVisible = items;
+    pruneSelection(items);
 
     if (showSkeleton || state.failed || (!state.loading && !items.length)) {
+      clearThumbs(null);
+      syncSelectionUi();
       listHeadEl.hidden = true; rowsEl.hidden = true; cardsEl.hidden = true;
       if (showSkeleton) {
         renderSkeleton(isList);
@@ -1850,6 +2431,17 @@ export function storageConsoleHtml(): string {
     rowsEl.hidden = !isList;
     cardsEl.hidden = isList;
 
+    var thumbTargets = [];
+    if (isList) {
+      clearThumbs(null);
+    } else {
+      var activeThumbKeys = Object.create(null);
+      items.forEach(function (item) {
+        if (isThumbEligible(item)) activeThumbKeys[thumbKeyFor(item)] = true;
+      });
+      clearThumbs(activeThumbKeys);
+    }
+
     items.forEach(function (item, index) {
       var kind = item.type === "folder" ? "folder" : kindOf(item.name);
       var sizeText = item.type === "folder"
@@ -1862,15 +2454,22 @@ export function storageConsoleHtml(): string {
       } else if (sizeText) {
         subHtml = '<span class="name-sub row-mobile-size">' + esc(sizeText) + "</span>";
       }
+      var isSelected = Boolean(selectedPaths[item.path]);
+      var canDrag = !folderBusy && !cleanupBusy && (item.type === "folder" || Boolean(item.etag));
+      var selectLabel = t("selectItem", { name: item.name });
+      var checkBtn = '<button type="button" role="checkbox" class="select-check' + (isList ? "" : " card-check") + '" data-select="' + index + '" aria-checked="' + isSelected + '" aria-label="' + esc(selectLabel) + '"><span class="check-box" aria-hidden="true"><span class="check-mark">' + CHECK_SVG + "</span></span></button>";
       var kebabLabel = t("itemMenuFor", { name: item.name });
       var kebab = '<button type="button" class="kebab" data-item="' + index + '" aria-haspopup="menu" aria-expanded="false" aria-label="' + esc(kebabLabel) + '" title="' + esc(kebabLabel) + '">' +
         '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>';
       if (isList) {
         var li = document.createElement("li");
-        li.className = "row";
+        li.className = isSelected ? "row selected" : "row";
+        li.setAttribute("data-item-idx", String(index));
+        if (canDrag) { li.draggable = true; li.setAttribute("draggable", "true"); }
+        if (item.type === "folder") li.setAttribute("data-folder-path", item.path);
         li.innerHTML =
           '<button type="button" class="row-link" data-open="' + index + '" aria-label="' + esc(item.name) + '"></button>' +
-          '<span class="row-name">' + typeIcon(kind, 14) + '<span style="min-width:0">' +
+          '<span class="row-name">' + checkBtn + typeIcon(kind, 14) + '<span style="min-width:0">' +
           '<span class="name-text" style="display:block">' + esc(item.name) + "</span>" + subHtml + "</span></span>" +
           '<span class="row-size">' + esc(sizeText) + "</span>" +
           '<span class="row-time">' + esc(timeText) + "</span>" +
@@ -1878,7 +2477,10 @@ export function storageConsoleHtml(): string {
         rowsEl.appendChild(li);
       } else {
         var card = document.createElement("div");
-        card.className = "card";
+        card.className = isSelected ? "card selected" : "card";
+        card.setAttribute("data-item-idx", String(index));
+        if (canDrag) { card.draggable = true; card.setAttribute("draggable", "true"); }
+        if (item.type === "folder") card.setAttribute("data-folder-path", item.path);
         card.style.setProperty("--card-accent", KIND_ACCENT[kind] || KIND_ACCENT.file);
         var cardSub = item.sub ? '<div class="card-sub" title="' + esc(item.sub) + '">' + esc(item.sub) + "</div>" : "";
         var cardMetaText = item.type === "folder"
@@ -1886,22 +2488,31 @@ export function storageConsoleHtml(): string {
           : [sizeText, timeText].filter(Boolean).join(" · ");
         card.innerHTML =
           '<button type="button" class="row-link" data-open="' + index + '" aria-label="' + esc(item.name) + '"></button>' +
+          checkBtn +
           '<div class="card-thumb"><svg viewBox="0 0 24 24" width="42" height="42" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (KIND_ICON[kind] || KIND_ICON.file) + "</svg></div>" +
           '<div class="card-foot">' + typeIcon(kind, 13) +
           '<div class="card-meta"><div class="card-name">' + esc(item.name) + "</div>" + cardSub + '<div class="card-time">' + esc(cardMetaText) + "</div></div>" +
           kebab + "</div>";
         cardsEl.appendChild(card);
+        if (isThumbEligible(item) && typeof card.querySelector === "function") {
+          var thumbEl = card.querySelector(".card-thumb");
+          if (thumbEl) thumbTargets.push({ el: thumbEl, path: item.path, cacheKey: thumbKeyFor(item) });
+        }
       }
     });
+    syncSelectionUi();
+    if (!isList && thumbTargets.length) observeGridThumbs(thumbTargets);
   }
 
   // ---- Open (navigate / preview) ----
   function openItem(item, trigger) {
     if (item.type === "folder") {
+      clearSelection(false);
       state.nav = "files";
       state.query = "";
       searchInput.value = "";
       state.path = item.path;
+      syncUrl("push");
       render();
       if (mainEl && typeof mainEl.focus === "function") mainEl.focus();
       return;
@@ -1909,11 +2520,71 @@ export function storageConsoleHtml(): string {
     openPreview(item, trigger);
   }
   document.addEventListener("click", function (e) {
+    var check = e.target.closest ? e.target.closest(".select-check[data-select]") : null;
+    if (check) {
+      e.preventDefault();
+      e.stopPropagation();
+      closeMenus(false);
+      var idx = Number(check.getAttribute("data-select"));
+      var item = currentVisible[idx];
+      if (!item) return;
+      var nextState = !selectedPaths[item.path];
+      if (e.shiftKey && lastSelectedIndex >= 0 && lastSelectedIndex < currentVisible.length) {
+        var lo = Math.min(lastSelectedIndex, idx);
+        var hi = Math.max(lastSelectedIndex, idx);
+        for (var i = lo; i <= hi; i++) {
+          if (nextState) selectedPaths[currentVisible[i].path] = true;
+          else delete selectedPaths[currentVisible[i].path];
+        }
+      } else {
+        if (nextState) selectedPaths[item.path] = true;
+        else delete selectedPaths[item.path];
+      }
+      lastSelectedIndex = idx;
+      syncSelectionUi();
+      return;
+    }
     var opener = e.target.closest ? e.target.closest("[data-open]") : null;
     if (!opener) return;
     var item = currentVisible[Number(opener.getAttribute("data-open"))];
     if (item) openItem(item, opener);
   });
+  if (selectAllBtn) {
+    selectAllBtn.addEventListener("click", function () {
+      if (selectAllBtn.disabled || !currentVisible.length) return;
+      if (selectedCount() === currentVisible.length) {
+        clearSelection(true);
+      } else {
+        currentVisible.forEach(function (item) { selectedPaths[item.path] = true; });
+        lastSelectedIndex = currentVisible.length - 1;
+        syncSelectionUi();
+      }
+    });
+  }
+  if (bulkClearBtn) {
+    bulkClearBtn.addEventListener("click", function () { clearSelection(true); });
+  }
+  if (bulkMoveBtn) {
+    bulkMoveBtn.addEventListener("click", function () {
+      var plan = buildBulkPlan(selectedVisibleItems());
+      if (!plan) return;
+      openBulkMoveDialog(plan, null, bulkMoveBtn);
+    });
+  }
+  if (bulkDeleteBtn) {
+    bulkDeleteBtn.addEventListener("click", function () {
+      var plan = buildBulkPlan(selectedVisibleItems());
+      if (!plan) return;
+      actionTarget = null;
+      actionEntries = null;
+      bulkActionPlan = plan;
+      deleteOpener = bulkDeleteBtn;
+      var totalEntries = 0;
+      plan.forEach(function (step) { totalEntries += step.entries ? step.entries.length : 1; });
+      deleteBody.textContent = t("bulkDeleteBody", { count: plan.length, entries: totalEntries });
+      deleteDialog.showModal();
+    });
+  }
 
   // ---- Preview ----
   var previewEl = document.getElementById("preview");
@@ -2172,6 +2843,9 @@ export function storageConsoleHtml(): string {
       } else if (previewEl.classList.contains("open")) {
         e.preventDefault();
         closePreview(true);
+      } else if (!hasOpenOverlay() && !isTextInput(document.activeElement) && selectedCount() > 0) {
+        e.preventDefault();
+        clearSelection(true);
       }
       return;
     }
@@ -2235,21 +2909,25 @@ export function storageConsoleHtml(): string {
     brandLink.addEventListener("click", function (e) {
       if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button) return;
       e.preventDefault();
+      clearSelection(false);
       state.nav = "files";
       state.path = "";
       state.query = "";
       searchInput.value = "";
+      syncUrl("push");
       render();
       if (mainEl && typeof mainEl.focus === "function") mainEl.focus();
     });
   }
   document.querySelectorAll("[data-nav]").forEach(function (el) {
     el.addEventListener("click", function () {
+      clearSelection(false);
       state.nav = el.getAttribute("data-nav");
       state.path = "";
       state.query = "";
       searchInput.value = "";
       if (state.nav === "recent") state.sort = { key: "uploaded", dir: "desc" };
+      syncUrl("push");
       render();
     });
   });
@@ -2268,6 +2946,7 @@ export function storageConsoleHtml(): string {
       } else {
         state.sort = { key: key, dir: key === "name" ? "asc" : "desc" };
       }
+      lastSelectedIndex = -1;
       render();
     });
   });
@@ -2276,9 +2955,12 @@ export function storageConsoleHtml(): string {
   var searchTimer;
   function clearSearch(refocus) {
     clearTimeout(searchTimer);
+    var hadQuery = Boolean(state.query);
     searchInput.value = "";
     state.query = "";
     if (searchClearBtn) searchClearBtn.hidden = true;
+    clearSelection(false);
+    if (hadQuery) syncUrl("push");
     render();
     if (refocus && typeof searchInput.focus === "function") searchInput.focus();
   }
@@ -2286,7 +2968,13 @@ export function storageConsoleHtml(): string {
     if (searchClearBtn) searchClearBtn.hidden = !searchInput.value;
     clearTimeout(searchTimer);
     searchTimer = setTimeout(function () {
-      state.query = searchInput.value.trim();
+      var prevQuery = state.query;
+      var nextQuery = searchInput.value.trim();
+      if (nextQuery !== prevQuery) {
+        clearSelection(false);
+        state.query = nextQuery;
+        syncUrl(Boolean(prevQuery) === Boolean(nextQuery) ? "replace" : "push");
+      }
       render();
     }, 150);
   });
@@ -2313,22 +3001,67 @@ export function storageConsoleHtml(): string {
       (moveDialog && moveDialog.open) ||
       (deleteDialog && deleteDialog.open) ||
       (cleanupDialog && cleanupDialog.open) ||
-      (folderResultDialog && folderResultDialog.open)
+      (folderResultDialog && folderResultDialog.open) ||
+      (shortcutsDialog && shortcutsDialog.open)
     );
+  }
+  function openShortcutsDialog(trigger) {
+    if (!shortcutsDialog) return;
+    shortcutsOpener = trigger || document.activeElement;
+    shortcutsDialog.showModal();
+  }
+  if (shortcutsBtn) {
+    shortcutsBtn.addEventListener("click", function () {
+      openShortcutsDialog(shortcutsBtn);
+    });
+  }
+  if (shortcutsDialog) {
+    shortcutsDialog.addEventListener("close", function () {
+      var opener = shortcutsOpener;
+      shortcutsOpener = null;
+      restoreDialogFocus(opener);
+    });
   }
   document.addEventListener("keydown", function (e) {
     if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing || e.keyCode === 229) return;
+    if (appEl && appEl.hidden) return;
+    if (e.key === "?" && !isTextInput(document.activeElement)) {
+      if (shortcutsDialog && shortcutsDialog.open) {
+        e.preventDefault();
+        shortcutsDialog.close();
+        return;
+      }
+      if (!hasOpenOverlay()) {
+        e.preventDefault();
+        openShortcutsDialog(document.activeElement);
+        return;
+      }
+    }
     if (hasOpenOverlay() || isTextInput(document.activeElement)) return;
-    if (e.key === "/" && document.activeElement !== searchInput) {
+    if (e.key === "/" && !e.shiftKey && document.activeElement !== searchInput) {
       e.preventDefault();
       searchInput.focus();
       return;
+    }
+    if (!e.shiftKey && !folderBusy && !cleanupBusy) {
+      if (e.key === "n") {
+        e.preventDefault();
+        openNewFolderDialog(document.activeElement);
+        return;
+      }
+      if (e.key === "u") {
+        e.preventDefault();
+        fileInput.click();
+        return;
+      }
     }
     if (e.key === "Backspace" && !e.shiftKey && state.nav === "files" && !state.query && state.path) {
       e.preventDefault();
       var trimmed = state.path.slice(0, -1);
       var slash = trimmed.lastIndexOf("/");
+      clearSelection(false);
       state.path = slash >= 0 ? trimmed.slice(0, slash + 1) : "";
+      syncUrl("push");
       render();
       if (mainEl && typeof mainEl.focus === "function") mainEl.focus();
       return;
@@ -2342,8 +3075,9 @@ export function storageConsoleHtml(): string {
       var active = document.activeElement;
       var idx = links.indexOf(active);
       var onItem = idx >= 0;
-      if (!onItem && active && active.classList && active.classList.contains("kebab")) {
-        var itemIdx = Number(active.getAttribute("data-item"));
+      if (!onItem && active && active.classList && (active.classList.contains("kebab") || active.classList.contains("select-check"))) {
+        var attr = active.classList.contains("kebab") ? "data-item" : "data-select";
+        var itemIdx = Number(active.getAttribute(attr));
         if (!isNaN(itemIdx) && itemIdx >= 0 && itemIdx < links.length) {
           idx = itemIdx;
           onItem = true;
@@ -2509,27 +3243,159 @@ export function storageConsoleHtml(): string {
     fileInput.value = "";
   });
 
-  // Drag & drop upload (files view only).
+  // Drag & drop: external OS file uploads vs internal item CAS moves.
   var dropOverlay = document.getElementById("drop-overlay");
   var dragDepth = 0;
+  function clearDropHighlight() {
+    if (activeDropTarget && activeDropTarget.classList) {
+      activeDropTarget.classList.remove("drop-target");
+    }
+    activeDropTarget = null;
+  }
+  function setDropHighlight(el) {
+    if (activeDropTarget === el) return;
+    clearDropHighlight();
+    activeDropTarget = el;
+    if (activeDropTarget && activeDropTarget.classList) {
+      activeDropTarget.classList.add("drop-target");
+    }
+  }
+  function clearDragState() {
+    dragItems = null;
+    dragDepth = 0;
+    if (dropOverlay && dropOverlay.classList) dropOverlay.classList.remove("active");
+    clearDropHighlight();
+    if (mainEl && typeof mainEl.querySelectorAll === "function") {
+      mainEl.querySelectorAll(".is-dragging").forEach(function (el) {
+        if (el.classList) el.classList.remove("is-dragging");
+      });
+    }
+  }
+  function isExternalFileDrag(e) {
+    if (dragItems) return false;
+    var types = e && e.dataTransfer && e.dataTransfer.types;
+    if (!types) return false;
+    return Array.prototype.indexOf.call(types, "Files") >= 0;
+  }
+  function canDropOnFolder(items, destFolder) {
+    if (!items || !items.length || folderBusy || cleanupBusy || state.loading || state.failed) return false;
+    if (typeof destFolder !== "string" || (destFolder !== "" && destFolder.slice(-1) !== "/")) return false;
+    var movable = false;
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
+      if (item.type === "folder") {
+        var destPath = destFolder + item.name + "/";
+        if (destFolder === item.path || destFolder.indexOf(item.path) === 0 || destPath.indexOf(item.path) === 0 || item.path.indexOf(destPath) === 0) {
+          return false;
+        }
+      }
+      if (parentFolderOf(item) !== destFolder) movable = true;
+    }
+    return movable;
+  }
+  mainEl.addEventListener("dragstart", function (e) {
+    if (folderBusy || cleanupBusy || state.loading || state.failed) { e.preventDefault(); return; }
+    var host = e.target && e.target.closest ? e.target.closest("[data-item-idx]") : null;
+    if (!host) return;
+    var item = currentVisible[Number(host.getAttribute("data-item-idx"))];
+    if (!item || (item.type === "file" && !item.etag)) { e.preventDefault(); return; }
+    var selected = selectedPaths[item.path] ? selectedVisibleItems() : [];
+    dragItems = selected.length > 1 ? selected : [item];
+    if (host.classList) host.classList.add("is-dragging");
+    if (e.dataTransfer) {
+      try {
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", item.path);
+      } catch (err) { /* ignore synthetic drag events */ }
+    }
+  });
   mainEl.addEventListener("dragenter", function (e) {
-    if (state.nav !== "files" || state.query) return;
+    if (dragItems) {
+      var target = e.target && e.target.closest ? e.target.closest("[data-folder-path]") : null;
+      if (target && canDropOnFolder(dragItems, target.getAttribute("data-folder-path"))) {
+        e.preventDefault();
+        setDropHighlight(target);
+      }
+      return;
+    }
+    if (state.nav !== "files" || state.query || !isExternalFileDrag(e)) return;
     e.preventDefault();
     dragDepth += 1;
     dropOverlay.classList.add("active");
   });
-  mainEl.addEventListener("dragover", function (e) { e.preventDefault(); });
-  mainEl.addEventListener("dragleave", function () {
+  mainEl.addEventListener("dragover", function (e) {
+    if (dragItems) {
+      var target = e.target && e.target.closest ? e.target.closest("[data-folder-path]") : null;
+      if (target && canDropOnFolder(dragItems, target.getAttribute("data-folder-path"))) {
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+        setDropHighlight(target);
+      } else {
+        clearDropHighlight();
+      }
+      return;
+    }
+    if (state.nav === "files" && !state.query && isExternalFileDrag(e)) e.preventDefault();
+  });
+  mainEl.addEventListener("dragleave", function (e) {
+    if (dragItems) {
+      if (activeDropTarget && (!e.relatedTarget || (typeof activeDropTarget.contains === "function" && !activeDropTarget.contains(e.relatedTarget)))) {
+        clearDropHighlight();
+      }
+      return;
+    }
     dragDepth = Math.max(0, dragDepth - 1);
     if (!dragDepth) dropOverlay.classList.remove("active");
   });
   mainEl.addEventListener("drop", function (e) {
+    if (dragItems) {
+      e.preventDefault();
+      e.stopPropagation();
+      var items = dragItems.slice();
+      var target = e.target && e.target.closest ? e.target.closest("[data-folder-path]") : activeDropTarget;
+      var destFolder = target ? target.getAttribute("data-folder-path") : null;
+      clearDragState();
+      if (destFolder == null || !canDropOnFolder(items, destFolder)) return;
+      if (items.length === 1 && items[0].type === "file") {
+        var file = items[0];
+        if (!file.etag) { toast(t("errRevision")); load(); return; }
+        api("/api/drive/move", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            source_path: file.path,
+            destination_path: destFolder + file.name,
+            source_etag: file.etag,
+          }),
+        }).then(checkMutationResponse).then(function () {
+          clearSelection(false);
+          toast(t("itemMoved"));
+          load();
+        }).catch(mutationFailed);
+        return;
+      }
+      if (items.length === 1 && items[0].type === "folder") {
+        var folder = items[0];
+        var entries = folderSnapshot(folder);
+        if (!entries) { folderUnavailable(); return; }
+        bulkActionPlan = null;
+        actionEntries = entries;
+        actionTarget = folder;
+        openMoveDialog(folder, target, destFolder);
+        return;
+      }
+      var plan = buildBulkPlan(items);
+      if (!plan) return;
+      openBulkMoveDialog(plan, destFolder, target);
+      return;
+    }
     e.preventDefault();
     dragDepth = 0;
     dropOverlay.classList.remove("active");
     if (state.nav !== "files" || state.query) return;
-    if (e.dataTransfer && e.dataTransfer.files) uploadFiles(e.dataTransfer.files);
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) uploadFiles(e.dataTransfer.files);
   });
+  document.addEventListener("dragend", clearDragState);
 
   // ---- New menu / dialogs ----
   var nameDialog = document.getElementById("name-dialog");
@@ -2622,6 +3488,7 @@ export function storageConsoleHtml(): string {
   var deleteConfirm = document.getElementById("delete-confirm");
   if (deleteDialog) {
     deleteDialog.addEventListener("close", function () {
+      bulkActionPlan = null;
       var opener = deleteOpener;
       deleteOpener = null;
       restoreDialogFocus(opener);
@@ -2648,6 +3515,7 @@ export function storageConsoleHtml(): string {
   var moveDialog = document.getElementById("move-dialog");
   if (moveDialog) {
     moveDialog.addEventListener("close", function () {
+      bulkActionPlan = null;
       var opener = moveOpener;
       moveOpener = null;
       restoreDialogFocus(opener);
@@ -2721,7 +3589,8 @@ export function storageConsoleHtml(): string {
   }
   if (moveFolderSelect) moveFolderSelect.addEventListener("change", syncMoveCustom);
   if (moveCustomInput) moveCustomInput.addEventListener("input", function () { setMoveError(""); });
-  function openMoveDialog(item, trigger) {
+  function openMoveDialog(item, trigger, preselectDest) {
+    bulkActionPlan = null;
     moveOpener = trigger || document.activeElement;
     var currentParent = parentFolderOf(item);
     if (moveItemPrompt) moveItemPrompt.textContent = t("moveItemPrompt", { name: item.name });
@@ -2750,7 +3619,53 @@ export function storageConsoleHtml(): string {
       customOpt.value = MOVE_CUSTOM;
       customOpt.textContent = t("moveCustomOption");
       moveFolderSelect.appendChild(customOpt);
-      moveFolderSelect.value = currentParent;
+      moveFolderSelect.value = typeof preselectDest === "string" ? preselectDest : currentParent;
+    }
+    if (moveCustomInput) moveCustomInput.value = "";
+    if (moveCustomWrap) moveCustomWrap.hidden = true;
+    setMoveError("");
+    if (moveDialog) moveDialog.showModal();
+  }
+  function openBulkMoveDialog(plan, preselectDest, trigger) {
+    actionTarget = null;
+    actionEntries = null;
+    bulkActionPlan = plan;
+    moveOpener = trigger || document.activeElement;
+    var totalEntries = 0;
+    var parents = Object.create(null);
+    var excludedPrefixes = [];
+    plan.forEach(function (step) {
+      totalEntries += step.entries ? step.entries.length : 1;
+      parents[parentFolderOf(step.item)] = true;
+      if (step.item.type === "folder") excludedPrefixes.push(step.item.path);
+    });
+    var parentKeys = Object.keys(parents);
+    var commonParent = parentKeys.length === 1 ? parentKeys[0] : null;
+    if (moveItemPrompt) moveItemPrompt.textContent = t("bulkMovePrompt", { count: plan.length });
+    if (moveDialogNote) {
+      moveDialogNote.textContent = t("bulkMoveNote", { count: totalEntries });
+      moveDialogNote.hidden = false;
+    }
+    if (moveFolderSelect) {
+      moveFolderSelect.replaceChildren();
+      var rootOpt = document.createElement("option");
+      rootOpt.value = "";
+      rootOpt.textContent = commonParent === "" ? t("moveCurrentSuffix", { label: t("home") }) : t("home");
+      moveFolderSelect.appendChild(rootOpt);
+      knownFolders().forEach(function (folder) {
+        for (var i = 0; i < excludedPrefixes.length; i++) {
+          if (folder.indexOf(excludedPrefixes[i]) === 0) return;
+        }
+        var opt = document.createElement("option");
+        opt.value = folder;
+        opt.textContent = folder === commonParent ? t("moveCurrentSuffix", { label: folder }) : folder;
+        moveFolderSelect.appendChild(opt);
+      });
+      var customOpt = document.createElement("option");
+      customOpt.value = MOVE_CUSTOM;
+      customOpt.textContent = t("moveCustomOption");
+      moveFolderSelect.appendChild(customOpt);
+      moveFolderSelect.value = typeof preselectDest === "string" ? preselectDest : (commonParent !== null ? commonParent : "");
     }
     if (moveCustomInput) moveCustomInput.value = "";
     if (moveCustomWrap) moveCustomWrap.hidden = true;
@@ -2767,6 +3682,7 @@ export function storageConsoleHtml(): string {
       if (!item || folderBusy) return;
       if (action === "open") { openItem(item, trigger); return; }
       if (action === "download") { download(item); return; }
+      bulkActionPlan = null;
       actionEntries = item.type === "folder" ? folderSnapshot(item) : null;
       if (item.type === "folder" && !actionEntries) { folderUnavailable(); return; }
       actionTarget = item;
@@ -2801,8 +3717,9 @@ export function storageConsoleHtml(): string {
   if (moveForm) {
     moveForm.addEventListener("submit", function (e) {
       if (folderBusy) { e.preventDefault(); return; }
+      var plan = bulkActionPlan;
       var item = actionTarget;
-      if (!item) return;
+      if (!plan && !item) return;
       var usingCustom = moveFolderSelect && moveFolderSelect.value === MOVE_CUSTOM;
       var field = usingCustom ? moveCustomInput : moveFolderSelect;
       var destFolder = "";
@@ -2821,6 +3738,40 @@ export function storageConsoleHtml(): string {
         destFolder = normalized;
       } else if (moveFolderSelect) {
         destFolder = moveFolderSelect.value;
+      }
+      if (plan) {
+        var actionable = [];
+        var destNames = Object.create(null);
+        for (var i = 0; i < plan.length; i++) {
+          var step = plan[i];
+          var stepItem = step.item;
+          if (stepItem.type === "folder") {
+            var bulkDestPath = destFolder + stepItem.name + "/";
+            if (bulkDestPath.indexOf(stepItem.path) === 0 || stepItem.path.indexOf(bulkDestPath) === 0) {
+              e.preventDefault();
+              setMoveError(t("moveIntoSelf"), field);
+              return;
+            }
+          }
+          if (parentFolderOf(stepItem) === destFolder) continue;
+          var keyName = stepItem.name;
+          if (destNames[keyName]) {
+            e.preventDefault();
+            setMoveError(t("bulkMoveCollision"), field);
+            return;
+          }
+          destNames[keyName] = true;
+          actionable.push(step);
+        }
+        if (!actionable.length) {
+          e.preventDefault();
+          setMoveError(t("moveSameFolder"), field);
+          return;
+        }
+        setMoveError("");
+        bulkActionPlan = null;
+        runBulkOperation("move", actionable, destFolder);
+        return;
       }
       if (destFolder === parentFolderOf(item)) {
         e.preventDefault();
@@ -2885,9 +3836,11 @@ export function storageConsoleHtml(): string {
       }).then(function (r) {
         checkMutationResponse(r);
         if (state.nav !== "files" || state.query) {
+          clearSelection(false);
           state.nav = "files";
           state.query = "";
           searchInput.value = "";
+          syncUrl("push");
         }
         toast(t("folderCreated"));
         load();
@@ -2919,9 +3872,16 @@ export function storageConsoleHtml(): string {
   });
 
   deleteConfirm.addEventListener("click", function () {
+    var plan = bulkActionPlan;
     var item = actionTarget;
+    bulkActionPlan = null;
     deleteDialog.close();
-    if (!item || folderBusy) return;
+    if (folderBusy) return;
+    if (plan) {
+      runBulkOperation("delete", plan);
+      return;
+    }
+    if (!item) return;
     if (item.type === "folder") { runFolderOperation("delete", item); return; }
     if (!item.etag) { toast(t("errRevision")); load(); return; }
     api(fileUrl(item.path), {
