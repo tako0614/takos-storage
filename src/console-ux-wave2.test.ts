@@ -535,7 +535,7 @@ describe("Takos Storage Wave 2 UI/UX improvements", () => {
     expect(html).toContain(
       ".search { order: 3; flex: 1 0 100%; max-width: none; }",
     );
-    expect(html).toContain(".tray-retry { min-height: 40px;");
+    expect(html).toContain(".tray-retry { min-height: 44px;");
     expect(html).toContain(
       'id="search-truncated" class="search-notice" role="status"',
     );
