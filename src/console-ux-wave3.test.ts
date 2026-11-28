@@ -611,7 +611,7 @@ describe("Takos Storage Wave 3 UI/UX improvements", () => {
       'class="list-head" id="list-head" role="group" data-i18n-label="sortLabel" aria-label="Sort"',
     );
     expect(html).toContain(
-      ".list-head, .row { grid-template-columns: minmax(0,1fr) 108px 44px; }",
+      ".list-head:not(.as-grid), .row { grid-template-columns: minmax(0,1fr) 94px 44px;",
     );
   });
 

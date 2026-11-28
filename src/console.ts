@@ -43,6 +43,7 @@ const CATALOGS = {
     navFiles: "My Drive",
     navRecent: "Recent",
     usage: "{count} files · {size}",
+    usageOne: "1 file · {size}",
     usageTruncated: "More items are available. Load more to include them.",
     loadMore: "Load more",
     retry: "Retry",
@@ -83,6 +84,7 @@ const CATALOGS = {
     sortAction: "Sort by {label}",
     folder: "Folder",
     folderCount: "{count} items",
+    folderCountOne: "1 item",
     itemMenu: "More actions",
     itemMenuFor: "More actions for {name}",
     menuDownload: "Download",
@@ -133,7 +135,9 @@ const CATALOGS = {
     bulkWorkingMove: "Moving {done} / {total}…",
     bulkWorkingDelete: "Deleting {done} / {total}…",
     bulkMoved: "Moved {count} items.",
+    bulkMovedOne: "Moved 1 item.",
     bulkDeleted: "Deleted {count} items.",
+    bulkDeletedOne: "Deleted 1 item.",
     bulkResultTitle: "Review batch operation",
     bulkIncomplete:
       "Some items could not be updated. Review the refreshed list before trying again; no automatic retry was sent.",
@@ -143,6 +147,7 @@ const CATALOGS = {
     shortcutSearch: "Focus search",
     shortcutNewFolder: "New folder",
     shortcutUpload: "Upload files",
+    shortcutSelectAll: "Select all visible items",
     shortcutNav: "Navigate items or preview files",
     shortcutUp: "Go to parent folder",
     shortcutEsc: "Close menu, preview, or clear selection",
@@ -205,6 +210,7 @@ const CATALOGS = {
     previewPrev: "Previous file",
     previewNext: "Next file",
     previewTextLabel: "File contents: {name}",
+    previewMediaLabel: "Media playback: {name}",
     download: "Download",
     dropHint: "Drop files to upload",
     justNow: "just now",
@@ -238,6 +244,7 @@ const CATALOGS = {
     navFiles: "マイドライブ",
     navRecent: "最近",
     usage: "{count} 個のファイル · {size}",
+    usageOne: "1 個のファイル · {size}",
     usageTruncated: "続きの項目があります。「さらに読み込む」で表示できます。",
     loadMore: "さらに読み込む",
     retry: "再試行",
@@ -278,6 +285,7 @@ const CATALOGS = {
     sortAction: "{label}で並び替え",
     folder: "フォルダ",
     folderCount: "{count} 件",
+    folderCountOne: "1 件",
     itemMenu: "その他の操作",
     itemMenuFor: "「{name}」のその他の操作",
     menuDownload: "ダウンロード",
@@ -328,7 +336,9 @@ const CATALOGS = {
     bulkWorkingMove: "移動中 {done} / {total}…",
     bulkWorkingDelete: "削除中 {done} / {total}…",
     bulkMoved: "{count}件を移動しました。",
+    bulkMovedOne: "1件を移動しました。",
     bulkDeleted: "{count}件を削除しました。",
+    bulkDeletedOne: "1件を削除しました。",
     bulkResultTitle: "一括操作の結果を確認",
     bulkIncomplete:
       "一部の項目を更新できませんでした。更新された一覧を確認してからやり直してください。自動再送はしていません。",
@@ -338,6 +348,7 @@ const CATALOGS = {
     shortcutSearch: "検索欄にフォーカス",
     shortcutNewFolder: "新しいフォルダを作成",
     shortcutUpload: "ファイルをアップロード",
+    shortcutSelectAll: "表示中の項目をすべて選択",
     shortcutNav: "一覧の移動・プレビューの前/次",
     shortcutUp: "親フォルダへ移動",
     shortcutEsc: "メニュー・プレビューを閉じる / 選択解除",
@@ -402,6 +413,7 @@ const CATALOGS = {
     previewPrev: "前のファイル",
     previewNext: "次のファイル",
     previewTextLabel: "ファイルの内容: {name}",
+    previewMediaLabel: "メディア再生: {name}",
     download: "ダウンロード",
     dropHint: "ドロップしてアップロード",
     justNow: "たった今",
@@ -539,7 +551,8 @@ export function storageConsoleHtml(): string {
     display: flex; flex-direction: column; align-items: center; gap: 10px;
     max-width: 360px; color: var(--text); font-size: 15px; font-weight: 500; text-align: center;
   }
-  .splash-card p { margin: 0; }
+  .splash-card h1, .splash-card p { margin: 0; }
+  .splash-card h1 { font-size: 16px; font-weight: 600; }
   .splash-card .splash-body { font-size: 13.5px; font-weight: 400; color: var(--text-soft); line-height: 1.5; }
   .splash-actions { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
   .splash-actions .btn:not(.primary) { border: 1px solid var(--line); }
@@ -593,6 +606,7 @@ export function storageConsoleHtml(): string {
   .icon-btn:hover { background: var(--hover); color: var(--text); }
   .icon-btn.spinning svg { animation: spin .8s linear infinite; }
   .tray-close { width: 36px; height: 36px; }
+  .tray-close:focus-visible { outline-offset: -2px; }
   .lang-btn {
     display: inline-flex; align-items: center; justify-content: center;
     min-width: 40px; height: 36px; padding: 0 10px;
@@ -684,6 +698,7 @@ export function storageConsoleHtml(): string {
   }
   .seg + .seg { border-left: 1px solid var(--line); }
   .seg[aria-pressed="true"] { background: var(--active-pill); color: var(--active-text); }
+  .view-toggle .seg:focus-visible { outline-offset: -2px; }
 
   .list-head, .row { display: grid; grid-template-columns: minmax(0,1fr) 110px 170px 48px; align-items: center; gap: 8px; }
   .list-head {
@@ -749,6 +764,8 @@ export function storageConsoleHtml(): string {
     background: var(--active-pill) !important;
   }
   .row-link { position: absolute; inset: 0; border: none; background: transparent; cursor: pointer; border-radius: 4px; z-index: 1; }
+  .row .row-link:focus-visible { outline-offset: -2px; }
+  .card .row-link:focus-visible { outline-offset: -2px; border-radius: 11px; }
   .row-name { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: 14px; }
   .row-name .name-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .row-name .name-sub { display: block; font-size: 12px; color: var(--text-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -879,10 +896,25 @@ export function storageConsoleHtml(): string {
   .preview-bar .icon-btn:disabled:hover { background: transparent; color: #cbd5e1; }
   .preview-body { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 0 24px 24px; }
   .preview-body img { max-width: 100%; max-height: 100%; border-radius: 8px; box-shadow: var(--shadow-lg); }
+  .preview-body video { max-width: 100%; max-height: 100%; border-radius: 8px; box-shadow: var(--shadow-lg); background: #000; }
+  .preview-audio-card {
+    width: min(460px, 100%); padding: 24px; border-radius: 14px;
+    background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow-lg);
+    display: flex; flex-direction: column; align-items: center; gap: 14px;
+    color: var(--text); text-align: center;
+  }
+  .preview-audio-icon .type-icon { width: 52px; height: 52px; border-radius: 14px; }
+  .preview-audio-name { max-width: 100%; font-size: 14.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .preview-audio-card audio { width: 100%; }
   .preview-body pre {
     width: min(860px, 100%); max-height: 100%; overflow: auto; margin: 0;
-    background: var(--panel); color: var(--text); border-radius: 12px; padding: 18px;
+    background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 12px; padding: 18px;
     font-size: 13px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere;
+  }
+  .result-paths {
+    white-space: pre-wrap; overflow-wrap: anywhere; max-height: 40vh; overflow: auto;
+    padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--bg); font-size: 12.5px; line-height: 1.5; margin: 8px 0 0;
   }
   .preview-body .preview-fallback { color: #e5e7eb; text-align: center; display: flex; flex-direction: column; gap: 14px; align-items: center; }
   .preview-body .preview-fallback .btn { color: #e5e7eb; border: 1px solid rgba(255,255,255,.28); }
@@ -946,7 +978,7 @@ export function storageConsoleHtml(): string {
   @media (max-width: 820px) {
     aside { display: none; }
     .mobile-nav { display: flex; }
-    main { margin: 0 10px 10px; }
+    main { margin: 0 10px 10px; padding-bottom: 84px; }
     .main-head { padding: 6px 8px 6px 12px; min-height: 58px; }
     .list-head { top: 58px; }
     .fab { display: inline-flex; }
@@ -986,12 +1018,20 @@ export function storageConsoleHtml(): string {
     .search { order: 3; flex: 1 0 100%; max-width: none; }
     .crumbs, .crumb, h1.crumb-heading { font-size: 17px; }
     .crumb { padding: 4px 6px; }
-    .list-head, .row { grid-template-columns: minmax(0,1fr) 108px 44px; }
+    .list-head:not(.as-grid), .row { grid-template-columns: minmax(0,1fr) 94px 44px; gap: 4px; padding-left: 8px; padding-right: 4px; }
+    .list-head:not(.as-grid) .sortable { font-size: 12px; }
     .list-head:not(.as-grid) .sortable.col-size, .row-size { display: none; }
+    .list-head.as-grid { padding: 4px 8px 8px; gap: 4px; }
+    .list-head.as-grid .sortable { padding: 8px 10px; font-size: 12.5px; }
     .row-name { gap: 6px; }
+    .row-time { font-size: 12px; }
     .row-name .row-mobile-size { display: block; }
-    .cards, .skel-cards { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+    .state.is-skeleton { padding: 8px; }
+    .cards, .skel-cards { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+    .cards { padding: 10px 8px; }
     .card-thumb { height: 84px; }
+    .card-foot { padding: 8px 2px 8px 10px; gap: 2px; }
+    .card-foot .type-icon { display: none; }
     .preview-bar { padding: 8px 10px; gap: 4px; }
   }
   @media (prefers-reduced-motion: reduce) {
@@ -1005,7 +1045,7 @@ export function storageConsoleHtml(): string {
   <div class="splash" id="splash">
     <div class="splash-card">
       <span class="mark">${svg(ICON_HDD, 17)}</span>
-      <p id="splash-text" role="status" aria-live="polite" data-i18n="loading">${CATALOGS.en.loading}</p>
+      <h1 id="splash-text" role="status" aria-live="polite" data-i18n="loading">${CATALOGS.en.loading}</h1>
       <p id="splash-body" class="splash-body" hidden></p>
       <div class="splash-actions" id="splash-actions" hidden>
         <button type="button" class="btn primary" id="splash-retry" hidden data-i18n="retry">${CATALOGS.en.retry}</button>
@@ -1049,7 +1089,7 @@ export function storageConsoleHtml(): string {
         ${svg(ICON_PLUS, 22)}<span data-i18n="newButton">${CATALOGS.en.newButton}</span>
       </button>
       <nav id="side-nav" data-i18n-label="navLabel" aria-label="${CATALOGS.en.navLabel}">
-        <button type="button" class="nav-item" data-nav="files" aria-pressed="true">
+        <button type="button" class="nav-item" data-nav="files" data-folder-path="" aria-pressed="true">
           <span class="nav-icon">${svg(ICON_FOLDER, 18)}</span><span data-i18n="navFiles">${CATALOGS.en.navFiles}</span>
         </button>
         <button type="button" class="nav-item" data-nav="recent" aria-pressed="false">
@@ -1181,7 +1221,7 @@ export function storageConsoleHtml(): string {
   <dialog id="folder-result-dialog" aria-labelledby="folder-result-title">
     <h2 id="folder-result-title" data-i18n="folderResultTitle">${CATALOGS.en.folderResultTitle}</h2>
     <p id="folder-result-message"></p>
-    <pre id="folder-result-paths" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:40vh;overflow:auto"></pre>
+    <pre id="folder-result-paths" class="result-paths" tabindex="0"></pre>
     <div class="dialog-actions">
       <button type="button" class="btn" data-close data-i18n="folderDismiss">${CATALOGS.en.folderDismiss}</button>
     </div>
@@ -1193,6 +1233,7 @@ export function storageConsoleHtml(): string {
       <dt><kbd>/</kbd></dt><dd data-i18n="shortcutSearch">${CATALOGS.en.shortcutSearch}</dd>
       <dt><kbd>n</kbd></dt><dd data-i18n="shortcutNewFolder">${CATALOGS.en.shortcutNewFolder}</dd>
       <dt><kbd>u</kbd></dt><dd data-i18n="shortcutUpload">${CATALOGS.en.shortcutUpload}</dd>
+      <dt><kbd>Ctrl/⌘</kbd><kbd>A</kbd></dt><dd data-i18n="shortcutSelectAll">${CATALOGS.en.shortcutSelectAll}</dd>
       <dt><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd></dt><dd data-i18n="shortcutNav">${CATALOGS.en.shortcutNav}</dd>
       <dt><kbd>Backspace</kbd></dt><dd data-i18n="shortcutUp">${CATALOGS.en.shortcutUp}</dd>
       <dt><kbd>Esc</kbd></dt><dd data-i18n="shortcutEsc">${CATALOGS.en.shortcutEsc}</dd>
@@ -1220,7 +1261,7 @@ export function storageConsoleHtml(): string {
     <div class="preview-body" id="preview-body"></div>
   </div>
 
-  <div class="tray" id="tray">
+  <div class="tray" id="tray" role="region" aria-labelledby="tray-title">
     <div class="tray-head"><span id="tray-title" data-i18n="upTrayTitle">${CATALOGS.en.upTrayTitle}</span><span class="tray-progress" id="tray-progress" aria-live="polite"></span><span class="spacer"></span>
       <button type="button" class="icon-btn tray-close" id="tray-close" data-i18n-label="close" aria-label="${CATALOGS.en.close}">${svg(ICON_X, 15)}</button>
     </div>
@@ -1327,6 +1368,7 @@ export function storageConsoleHtml(): string {
   var splashEl = document.getElementById("splash");
   var appEl = document.getElementById("app");
   var fabEl = document.getElementById("fab");
+  var sideNavEl = document.getElementById("side-nav");
   var mainEl = document.getElementById("main");
   var tray = document.getElementById("tray");
   var rowsEl = document.getElementById("rows");
@@ -1705,6 +1747,12 @@ export function storageConsoleHtml(): string {
   var PREVIEW_IMAGE_EXT = Object.assign(Object.create(null), {
     png: 1, jpg: 1, jpeg: 1, gif: 1, webp: 1, avif: 1, ico: 1,
   });
+  var PREVIEW_AUDIO_EXT = Object.assign(Object.create(null), {
+    mp3: "audio/mpeg", wav: "audio/wav", ogg: "audio/ogg", flac: "audio/flac", m4a: "audio/mp4",
+  });
+  var PREVIEW_VIDEO_EXT = Object.assign(Object.create(null), {
+    mp4: "video/mp4", webm: "video/webm", mov: "video/quicktime",
+  });
   function extOf(name) {
     var dot = name.lastIndexOf(".");
     return dot < 0 ? "" : name.slice(dot + 1).toLowerCase();
@@ -1903,7 +1951,10 @@ export function storageConsoleHtml(): string {
       progress.hidden = true;
       clearSelection(false);
       if (failed.length === 0 && remaining.length === 0 && !uncertain) {
-        toast(t(operation === "move" ? "bulkMoved" : "bulkDeleted", { count: completed.length }));
+        var bulkDoneKey = operation === "move"
+          ? (completed.length === 1 ? "bulkMovedOne" : "bulkMoved")
+          : (completed.length === 1 ? "bulkDeletedOne" : "bulkDeleted");
+        toast(t(bulkDoneKey, { count: completed.length }));
       } else {
         bulkResult(completed, failed.concat(remaining), uncertain);
       }
@@ -2194,7 +2245,7 @@ export function storageConsoleHtml(): string {
       total += f.size || 0;
       count += 1;
     });
-    var summary = t("usage", { count: count, size: fmtBytes(total) || "0 B" });
+    var summary = t(count === 1 ? "usageOne" : "usage", { count: count, size: fmtBytes(total) || "0 B" });
     document.getElementById("usage-text").textContent = summary;
     document.getElementById("usage-truncated").hidden = !state.truncated;
     var mobileUsage = document.getElementById("mobile-usage-text");
@@ -2475,7 +2526,7 @@ export function storageConsoleHtml(): string {
     items.forEach(function (item, index) {
       var kind = item.type === "folder" ? "folder" : kindOf(item.name);
       var sizeText = item.type === "folder"
-        ? (item.count ? t("folderCount", { count: item.count }) : t("folder"))
+        ? (item.count ? t(item.count === 1 ? "folderCountOne" : "folderCount", { count: item.count }) : t("folder"))
         : (fmtBytes(item.size) || "");
       var timeText = relTime(item.uploaded);
       var subHtml = "";
@@ -2631,6 +2682,7 @@ export function storageConsoleHtml(): string {
   var previewOpener = null;
   var previewRequest = 0;
   var PREVIEW_TEXT_MAX = 1024 * 1024;
+  var PREVIEW_MEDIA_MAX = 25 * 1024 * 1024;
   function previewFiles() {
     return currentVisible.filter(function (entry) { return entry.type === "file"; });
   }
@@ -2670,6 +2722,13 @@ export function storageConsoleHtml(): string {
     var wasOpen = previewEl.classList.contains("open");
     previewRequest++;
     previewEl.classList.remove("open");
+    if (typeof previewBody.querySelectorAll === "function") {
+      previewBody.querySelectorAll("audio, video").forEach(function (media) {
+        if (typeof media.pause === "function") media.pause();
+        if (typeof media.removeAttribute === "function") media.removeAttribute("src");
+        if (typeof media.load === "function") media.load();
+      });
+    }
     previewBody.innerHTML = "";
     if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = null; }
     previewTarget = null;
@@ -2713,7 +2772,8 @@ export function storageConsoleHtml(): string {
       else if (typeof previewEl.focus === "function") previewEl.focus();
     }
     var kind = kindOf(item.name);
-    if (PREVIEW_IMAGE_EXT[extOf(item.name)]) {
+    var ext = extOf(item.name);
+    if (PREVIEW_IMAGE_EXT[ext]) {
       api(fileUrl(item.path), null, isCurrent).then(function (r) {
         if (!isCurrent()) return;
         if (!r.ok) throw new Error("http " + r.status);
@@ -2727,6 +2787,54 @@ export function storageConsoleHtml(): string {
         img.alt = item.name;
         img.addEventListener("error", function () { showReadFailure(); });
         previewBody.appendChild(img);
+      }).catch(showReadFailure);
+      return;
+    }
+    var mediaMime = PREVIEW_AUDIO_EXT[ext] || PREVIEW_VIDEO_EXT[ext] || "";
+    if (mediaMime) {
+      if ((item.size || 0) > PREVIEW_MEDIA_MAX) {
+        fallbackPreview("previewTooBig");
+        return;
+      }
+      var isAudio = Boolean(PREVIEW_AUDIO_EXT[ext]);
+      api(fileUrl(item.path), null, isCurrent).then(function (r) {
+        if (!isCurrent()) return;
+        if (!r.ok) throw new Error("http " + r.status);
+        return r.blob();
+      }).then(function (blob) {
+        if (!isCurrent()) return;
+        var typedBlob = typeof Blob === "function" ? new Blob([blob], { type: mediaMime }) : blob;
+        previewUrl = URL.createObjectURL(typedBlob);
+        previewBody.innerHTML = "";
+        var media = document.createElement(isAudio ? "audio" : "video");
+        media.controls = true;
+        media.setAttribute("controls", "");
+        media.preload = "metadata";
+        if (!isAudio) {
+          media.playsInline = true;
+          media.setAttribute("playsinline", "");
+        }
+        media.setAttribute("aria-label", t("previewMediaLabel", { name: item.name }));
+        media.src = previewUrl;
+        media.addEventListener("error", function () {
+          if (!isCurrent()) return;
+          if (media.error && media.error.code === 4) fallbackPreview("previewNone");
+          else showReadFailure();
+        });
+        if (isAudio) {
+          var card = document.createElement("div");
+          card.className = "preview-audio-card";
+          var badge = document.createElement("div");
+          badge.className = "preview-audio-icon";
+          badge.innerHTML = typeIcon("audio", 24);
+          var labelEl = document.createElement("div");
+          labelEl.className = "preview-audio-name";
+          labelEl.textContent = item.name;
+          card.append(badge, labelEl, media);
+          previewBody.appendChild(card);
+        } else {
+          previewBody.appendChild(media);
+        }
       }).catch(showReadFailure);
       return;
     }
@@ -2881,7 +2989,7 @@ export function storageConsoleHtml(): string {
     }
     if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && previewEl.classList.contains("open") && !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing && e.keyCode !== 229) {
       var activeTag = document.activeElement && document.activeElement.tagName;
-      if (activeTag !== "PRE") {
+      if (activeTag !== "PRE" && activeTag !== "AUDIO" && activeTag !== "VIDEO") {
         e.preventDefault();
         stepPreview(e.key === "ArrowLeft" ? -1 : 1, false);
         return;
@@ -2894,7 +3002,7 @@ export function storageConsoleHtml(): string {
       }
       if (previewEl.classList.contains("open") && typeof previewEl.querySelectorAll === "function") {
         var focusable = Array.prototype.filter.call(
-          previewEl.querySelectorAll("button:not([disabled]):not([hidden]), a[href], [tabindex]:not([tabindex='-1'])"),
+          previewEl.querySelectorAll("button:not([disabled]):not([hidden]), a[href], audio[controls], video[controls], [tabindex]:not([tabindex='-1'])"),
           function (el) { return !el.hidden && !el.disabled && (!el.closest || !el.closest("[hidden]")); }
         );
         if (!focusable.length) { e.preventDefault(); previewEl.focus(); return; }
@@ -2921,7 +3029,7 @@ export function storageConsoleHtml(): string {
       return;
     }
     var item = currentVisible[Number(kebab.getAttribute("data-item"))];
-    if (!item || folderBusy) return;
+    if (!item || folderBusy || cleanupBusy) return;
     menuTarget = item;
     itemMenu.querySelector('[data-action="download"]').hidden = item.type === "folder";
     ["rename", "move", "delete"].forEach(function (action) {
@@ -3053,9 +3161,30 @@ export function storageConsoleHtml(): string {
       restoreDialogFocus(opener);
     });
   }
+  function isFocusInFileList(active) {
+    if (!active) return false;
+    var container = state.view === "list" ? rowsEl : cardsEl;
+    if (!container || container.hidden) return false;
+    if (active === mainEl || active === selectAllBtn || active === container) return true;
+    if (typeof container.contains === "function" && container.contains(active)) return true;
+    if (active.classList && (active.classList.contains("row-link") || active.classList.contains("select-check") || active.classList.contains("kebab"))) {
+      return !active.closest || Boolean(active.closest("#rows, #cards"));
+    }
+    return false;
+  }
   document.addEventListener("keydown", function (e) {
-    if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing || e.keyCode === 229) return;
+    if (e.isComposing || e.keyCode === 229) return;
     if (appEl && appEl.hidden) return;
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === "a" || e.key === "A")) {
+      if (!hasOpenOverlay() && !isTextInput(document.activeElement) && !state.loading && !state.failed && !folderBusy && !cleanupBusy && currentVisible.length > 0 && isFocusInFileList(document.activeElement)) {
+        e.preventDefault();
+        currentVisible.forEach(function (item) { selectedPaths[item.path] = true; });
+        lastSelectedIndex = currentVisible.length - 1;
+        syncSelectionUi();
+      }
+      return;
+    }
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.key === "?" && !isTextInput(document.activeElement)) {
       if (shortcutsDialog && shortcutsDialog.open) {
         e.preventDefault();
@@ -3341,13 +3470,88 @@ export function storageConsoleHtml(): string {
       } catch (err) { /* ignore synthetic drag events */ }
     }
   });
+  function handleInternalDragEnter(e) {
+    var target = e.target && e.target.closest ? e.target.closest("[data-folder-path]") : null;
+    if (target && canDropOnFolder(dragItems, target.getAttribute("data-folder-path"))) {
+      e.preventDefault();
+      setDropHighlight(target);
+    }
+  }
+  function handleInternalDragOver(e) {
+    var target = e.target && e.target.closest ? e.target.closest("[data-folder-path]") : null;
+    if (target && canDropOnFolder(dragItems, target.getAttribute("data-folder-path"))) {
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+      setDropHighlight(target);
+    } else {
+      clearDropHighlight();
+    }
+  }
+  function handleInternalDragLeave(e) {
+    if (activeDropTarget && (!e.relatedTarget || (typeof activeDropTarget.contains === "function" && !activeDropTarget.contains(e.relatedTarget)))) {
+      clearDropHighlight();
+    }
+  }
+  function handleInternalDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    var items = dragItems.slice();
+    var target = e.target && e.target.closest ? e.target.closest("[data-folder-path]") : activeDropTarget;
+    var destFolder = target ? target.getAttribute("data-folder-path") : null;
+    clearDragState();
+    if (destFolder == null || !canDropOnFolder(items, destFolder)) return;
+    if (items.length === 1 && items[0].type === "file") {
+      var file = items[0];
+      if (!file.etag) { toast(t("errRevision")); load(); return; }
+      api("/api/drive/move", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          source_path: file.path,
+          destination_path: destFolder + file.name,
+          source_etag: file.etag,
+        }),
+      }).then(checkMutationResponse).then(function () {
+        clearSelection(false);
+        toast(t("itemMoved"));
+        load();
+      }).catch(mutationFailed);
+      return;
+    }
+    var dropFocusTarget = target && typeof target.querySelector === "function"
+      ? (target.querySelector(".row-link") || (target.tagName === "BUTTON" ? target : mainEl))
+      : (target && target.tagName === "BUTTON" ? target : mainEl);
+    if (items.length === 1 && items[0].type === "folder") {
+      var folder = items[0];
+      var entries = folderSnapshot(folder);
+      if (!entries) { folderUnavailable(); return; }
+      bulkActionPlan = null;
+      actionEntries = entries;
+      actionTarget = folder;
+      openMoveDialog(folder, dropFocusTarget, destFolder);
+      return;
+    }
+    var plan = buildBulkPlan(items);
+    if (!plan) return;
+    openBulkMoveDialog(plan, destFolder, dropFocusTarget);
+  }
+  if (sideNavEl) {
+    sideNavEl.addEventListener("dragenter", function (e) {
+      if (dragItems) handleInternalDragEnter(e);
+    });
+    sideNavEl.addEventListener("dragover", function (e) {
+      if (dragItems) handleInternalDragOver(e);
+    });
+    sideNavEl.addEventListener("dragleave", function (e) {
+      if (dragItems) handleInternalDragLeave(e);
+    });
+    sideNavEl.addEventListener("drop", function (e) {
+      if (dragItems) handleInternalDrop(e);
+    });
+  }
   mainEl.addEventListener("dragenter", function (e) {
     if (dragItems) {
-      var target = e.target && e.target.closest ? e.target.closest("[data-folder-path]") : null;
-      if (target && canDropOnFolder(dragItems, target.getAttribute("data-folder-path"))) {
-        e.preventDefault();
-        setDropHighlight(target);
-      }
+      handleInternalDragEnter(e);
       return;
     }
     if (state.nav !== "files" || state.query || !isExternalFileDrag(e)) return;
@@ -3357,23 +3561,14 @@ export function storageConsoleHtml(): string {
   });
   mainEl.addEventListener("dragover", function (e) {
     if (dragItems) {
-      var target = e.target && e.target.closest ? e.target.closest("[data-folder-path]") : null;
-      if (target && canDropOnFolder(dragItems, target.getAttribute("data-folder-path"))) {
-        e.preventDefault();
-        if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
-        setDropHighlight(target);
-      } else {
-        clearDropHighlight();
-      }
+      handleInternalDragOver(e);
       return;
     }
     if (state.nav === "files" && !state.query && isExternalFileDrag(e)) e.preventDefault();
   });
   mainEl.addEventListener("dragleave", function (e) {
     if (dragItems) {
-      if (activeDropTarget && (!e.relatedTarget || (typeof activeDropTarget.contains === "function" && !activeDropTarget.contains(e.relatedTarget)))) {
-        clearDropHighlight();
-      }
+      handleInternalDragLeave(e);
       return;
     }
     dragDepth = Math.max(0, dragDepth - 1);
@@ -3381,47 +3576,7 @@ export function storageConsoleHtml(): string {
   });
   mainEl.addEventListener("drop", function (e) {
     if (dragItems) {
-      e.preventDefault();
-      e.stopPropagation();
-      var items = dragItems.slice();
-      var target = e.target && e.target.closest ? e.target.closest("[data-folder-path]") : activeDropTarget;
-      var destFolder = target ? target.getAttribute("data-folder-path") : null;
-      clearDragState();
-      if (destFolder == null || !canDropOnFolder(items, destFolder)) return;
-      if (items.length === 1 && items[0].type === "file") {
-        var file = items[0];
-        if (!file.etag) { toast(t("errRevision")); load(); return; }
-        api("/api/drive/move", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            source_path: file.path,
-            destination_path: destFolder + file.name,
-            source_etag: file.etag,
-          }),
-        }).then(checkMutationResponse).then(function () {
-          clearSelection(false);
-          toast(t("itemMoved"));
-          load();
-        }).catch(mutationFailed);
-        return;
-      }
-      var dropFocusTarget = target && typeof target.querySelector === "function"
-        ? (target.querySelector(".row-link") || (target.tagName === "BUTTON" ? target : mainEl))
-        : (target && target.tagName === "BUTTON" ? target : mainEl);
-      if (items.length === 1 && items[0].type === "folder") {
-        var folder = items[0];
-        var entries = folderSnapshot(folder);
-        if (!entries) { folderUnavailable(); return; }
-        bulkActionPlan = null;
-        actionEntries = entries;
-        actionTarget = folder;
-        openMoveDialog(folder, dropFocusTarget, destFolder);
-        return;
-      }
-      var plan = buildBulkPlan(items);
-      if (!plan) return;
-      openBulkMoveDialog(plan, destFolder, dropFocusTarget);
+      handleInternalDrop(e);
       return;
     }
     e.preventDefault();
@@ -3728,7 +3883,7 @@ export function storageConsoleHtml(): string {
       var item = menuTarget;
       var trigger = menuAnchor;
       closeMenus(false);
-      if (!item || folderBusy) return;
+      if (!item || folderBusy || cleanupBusy) return;
       if (action === "open") { openItem(item, trigger); return; }
       if (action === "download") { download(item); return; }
       bulkActionPlan = null;
@@ -3750,7 +3905,13 @@ export function storageConsoleHtml(): string {
         nameInput.setAttribute("aria-label", t("renameLabel"));
         setNameError("");
         nameDialog.showModal();
-        nameInput.select();
+        var stemDot = item.type === "file" ? item.name.lastIndexOf(".") : -1;
+        if (stemDot > 0 && typeof nameInput.setSelectionRange === "function") {
+          if (typeof nameInput.focus === "function") nameInput.focus();
+          nameInput.setSelectionRange(0, stemDot);
+        } else {
+          nameInput.select();
+        }
       } else if (action === "move") {
         openMoveDialog(item, trigger);
       } else if (action === "delete") {
