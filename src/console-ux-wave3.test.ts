@@ -611,7 +611,7 @@ describe("Takos Storage Wave 3 UI/UX improvements", () => {
       'class="list-head" id="list-head" role="group" data-i18n-label="sortLabel" aria-label="Sort"',
     );
     expect(html).toContain(
-      ".list-head, .row { grid-template-columns: minmax(0,1fr) 108px 44px; }",
+      ".list-head:not(.as-grid), .row { grid-template-columns: minmax(0,1fr) 100px 44px;",
     );
   });
 
@@ -622,11 +622,14 @@ describe("Takos Storage Wave 3 UI/UX improvements", () => {
     expect(denied.doc.getElementById("splash-text").textContent).toContain(
       "don't have access",
     );
-    expect(denied.doc.getElementById("splash-text").getAttribute("role")).toBe(
-      "alert",
-    );
     expect(
-      denied.doc.getElementById("splash-text").getAttribute("aria-live"),
+      denied.doc.getElementById("splash-text").getAttribute("role"),
+    ).toBeNull();
+    expect(
+      denied.doc.getElementById("splash-status").getAttribute("role"),
+    ).toBe("alert");
+    expect(
+      denied.doc.getElementById("splash-status").getAttribute("aria-live"),
     ).toBe("assertive");
     expect(denied.doc.getElementById("splash-retry").hidden).toBe(true);
 
