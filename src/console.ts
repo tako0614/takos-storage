@@ -582,7 +582,7 @@ export function storageConsoleHtml(): string {
   .main-head {
     display: flex; align-items: center; gap: 8px;
     padding: 10px 16px 6px; position: sticky; top: 0; background: var(--panel);
-    border-radius: 16px 16px 0 0; z-index: 5; min-height: 52px;
+    border-radius: 16px 16px 0 0; z-index: 5; min-height: 56px;
   }
   .main-head-actions { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
   .pending-deletions { padding: 16px; margin-bottom: 16px; border: 1px solid var(--line); border-radius: 12px; }
@@ -620,7 +620,7 @@ export function storageConsoleHtml(): string {
   .list-head, .row { display: grid; grid-template-columns: minmax(0,1fr) 110px 170px 48px; align-items: center; gap: 8px; }
   .list-head {
     padding: 6px 16px; font-size: 12.5px; color: var(--text-soft); font-weight: 500;
-    border-bottom: 1px solid var(--line); position: sticky; top: 52px; background: var(--panel); z-index: 4;
+    border-bottom: 1px solid var(--line); position: sticky; top: 56px; background: var(--panel); z-index: 4;
   }
   .list-head .sortable { display: inline-flex; align-items: center; gap: 4px; border: none; background: none; padding: 4px 0; cursor: pointer; color: inherit; font: inherit; font-weight: 500; white-space: nowrap; }
   .list-head .sortable:hover { color: var(--text); }
@@ -819,8 +819,8 @@ export function storageConsoleHtml(): string {
     aside { display: none; }
     .mobile-nav { display: flex; }
     main { margin: 0 10px 10px; }
-    .main-head { padding: 6px 8px 6px 12px; min-height: 56px; }
-    .list-head { top: 56px; }
+    .main-head { padding: 6px 8px 6px 12px; min-height: 58px; }
+    .list-head { top: 58px; }
     .fab { display: inline-flex; }
     header.app { padding: 8px 12px; gap: 6px; }
     .brand { min-width: 44px; min-height: 44px; justify-content: center; border-radius: 10px; }
@@ -842,6 +842,7 @@ export function storageConsoleHtml(): string {
     .row { min-height: 52px; height: auto; padding: 4px 12px 4px 16px; }
     .btn { min-height: 44px; padding: 10px 18px; display: inline-flex; align-items: center; justify-content: center; }
     .menu-item { min-height: 44px; padding: 10px 14px; }
+    dialog input[type="text"], dialog select { min-height: 44px; }
     .tray { bottom: 84px; }
     .toast { bottom: 84px; }
   }
@@ -851,7 +852,7 @@ export function storageConsoleHtml(): string {
     .search { order: 3; flex: 1 0 100%; max-width: none; }
     .crumbs, .crumb, h1.crumb-heading { font-size: 17px; }
     .crumb { padding: 4px 6px; }
-    .list-head, .row { grid-template-columns: minmax(0,1fr) 92px 44px; }
+    .list-head, .row { grid-template-columns: minmax(0,1fr) 108px 44px; }
     .list-head:not(.as-grid) .sortable.col-size, .row-size { display: none; }
     .row-name .row-mobile-size { display: block; }
     .cards, .skel-cards { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
@@ -889,7 +890,7 @@ export function storageConsoleHtml(): string {
       <button type="button" class="search-clear" id="q-clear" data-i18n-label="clearSearch" aria-label="${CATALOGS.en.clearSearch}" hidden>${svg(ICON_X, 15)}</button>
     </div>
     <div class="header-actions">
-      <span class="user-chip" id="user-chip" hidden><span class="avatar" id="user-avatar"></span><span class="user-name" id="user-name"></span></span>
+      <span class="user-chip" id="user-chip" role="img" hidden><span class="avatar" id="user-avatar" aria-hidden="true"></span><span class="user-name" id="user-name"></span></span>
       <button type="button" class="text-btn" id="logout" hidden data-i18n="logout">${CATALOGS.en.logout}</button>
       <button id="lang-toggle" class="lang-btn" type="button" aria-label="${CATALOGS.en.switchLang}" title="${CATALOGS.en.switchLang}">EN</button>
       <button id="theme-toggle" class="icon-btn" type="button" data-i18n-label="toggleTheme" aria-label="${CATALOGS.en.toggleTheme}"></button>
@@ -946,7 +947,7 @@ export function storageConsoleHtml(): string {
         <span class="search-notice-text" data-i18n="searchTruncated">${CATALOGS.en.searchTruncated}</span>
         <button type="button" class="btn primary" id="search-load-more" data-i18n="loadMore">${CATALOGS.en.loadMore}</button>
       </div>
-      <div class="list-head" id="list-head">
+      <div class="list-head" id="list-head" role="group" data-i18n-label="sortLabel" aria-label="${CATALOGS.en.sortLabel}">
         <button type="button" class="sortable" data-sort="name" aria-pressed="false" aria-label="${CATALOGS.en.sortAction.replace("{label}", CATALOGS.en.colName)}"><span data-i18n="colName">${CATALOGS.en.colName}</span><span class="sort-arrow" data-arrow="name" aria-hidden="true"></span></button>
         <button type="button" class="sortable col-size" data-sort="size" aria-pressed="false" aria-label="${CATALOGS.en.sortAction.replace("{label}", CATALOGS.en.colSize)}"><span data-i18n="colSize">${CATALOGS.en.colSize}</span><span class="sort-arrow" data-arrow="size" aria-hidden="true"></span></button>
         <button type="button" class="sortable" data-sort="uploaded" aria-pressed="true" aria-label="${CATALOGS.en.sortBy.replace("{label}", CATALOGS.en.colUpdated).replace("{dir}", CATALOGS.en.sortDesc)}"><span data-i18n="colUpdated">${CATALOGS.en.colUpdated}</span><span class="sort-arrow" data-arrow="uploaded" aria-hidden="true">▼</span></button>
@@ -1351,6 +1352,7 @@ export function storageConsoleHtml(): string {
     if (textEl) {
       textEl.textContent = t(titleKey);
       textEl.setAttribute("role", opts.alert ? "alert" : "status");
+      textEl.setAttribute("aria-live", opts.alert ? "assertive" : "polite");
     }
     var bodyEl = document.getElementById("splash-body");
     if (bodyEl) {

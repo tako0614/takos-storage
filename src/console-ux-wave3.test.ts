@@ -601,6 +601,18 @@ describe("Takos Storage Wave 3 UI/UX improvements", () => {
     expect(html).toContain('id="preview-meta"');
     expect(html).toContain(".kebab { width: 44px; height: 44px; }");
     expect(html).toContain(".tray-retry { min-height: 44px;");
+    expect(html).toContain(
+      'dialog input[type="text"], dialog select { min-height: 44px; }',
+    );
+    expect(html).toContain(
+      'class="user-chip" id="user-chip" role="img" hidden><span class="avatar" id="user-avatar" aria-hidden="true"></span>',
+    );
+    expect(html).toContain(
+      'class="list-head" id="list-head" role="group" data-i18n-label="sortLabel" aria-label="Sort"',
+    );
+    expect(html).toContain(
+      ".list-head, .row { grid-template-columns: minmax(0,1fr) 108px 44px; }",
+    );
   });
 
   test("boot handles 403 access denied and 500 errors on splash with recovery actions, and /api/drive/list 403 shows access-denied copy", async () => {
@@ -610,6 +622,12 @@ describe("Takos Storage Wave 3 UI/UX improvements", () => {
     expect(denied.doc.getElementById("splash-text").textContent).toContain(
       "don't have access",
     );
+    expect(denied.doc.getElementById("splash-text").getAttribute("role")).toBe(
+      "alert",
+    );
+    expect(
+      denied.doc.getElementById("splash-text").getAttribute("aria-live"),
+    ).toBe("assertive");
     expect(denied.doc.getElementById("splash-retry").hidden).toBe(true);
 
     const broken = await mount({ authMeStatus: 500, waitSettled: false });
