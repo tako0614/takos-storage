@@ -397,6 +397,16 @@ class FakeDoc {
       item.classes.add("menu-item");
       itemMenu.appendChild(item);
     }
+    const bulkBar = this.getElementById("bulk-bar");
+    bulkBar.append(
+      this.getElementById("bulk-count"),
+      this.getElementById("bulk-move"),
+      this.getElementById("bulk-delete"),
+      this.getElementById("bulk-clear"),
+    );
+    const selectAll = this.getElementById("select-all");
+    selectAll.classes.add("select-check");
+    selectAll.setAttribute("role", "checkbox");
   }
 
   getElementById = (id: string): FakeEl => {
@@ -1212,5 +1222,137 @@ describe("Takos Storage Wave 4 UI/UX improvements", () => {
     // Unguarded "u" triggers file input click.
     m.doc.dispatchDoc("keydown", { key: "u" });
     expect(fileInputClicks).toBe(1);
+
+    // Shift + "/" (international layouts like German QWERTZ / French AZERTY) still focuses #q.
+    main.focus();
+    m.doc.dispatchDoc("keydown", { key: "/", shiftKey: true });
+    expect(m.doc.activeElement).toBe(q);
+  });
+
+  test("review regressions: #select-all arrow nav, bulk folder same-folder error, focus retention, prototype extension safety, and popstate dialog close", async () => {
+    const m = await mount();
+    const main = m.doc.getElementById("main");
+    const selectAll = m.doc.getElementById("select-all");
+    const bulkClear = m.doc.getElementById("bulk-clear");
+    const bulkMove = m.doc.getElementById("bulk-move");
+    const links = m.doc.getElementById("rows").querySelectorAll(".row-link");
+
+    // 1. ArrowDown from #select-all (which has .select-check without data-select) enters row 0, not row 1; ArrowUp/Home/End stay put.
+    selectAll.focus();
+    m.doc.dispatchDoc("keydown", { key: "ArrowUp" });
+    expect(m.doc.activeElement).toBe(selectAll);
+    m.doc.dispatchDoc("keydown", { key: "Home" });
+    expect(m.doc.activeElement).toBe(selectAll);
+    m.doc.dispatchDoc("keydown", { key: "ArrowDown" });
+    expect(m.doc.activeElement).toBe(links[0]!);
+
+    // 2. Bulk move of selected folder(s) in current folder reports "Already in this folder." (not moveIntoSelf), while real descendant still blocks with moveIntoSelf.
+    const docsIdx = m.ctrl.items().findIndex((i) => i.name === "Documents");
+    const docsCheck = m.doc
+      .getElementById("rows")
+      .querySelectorAll(".select-check[data-select]")
+      .find((c) => Number(c.getAttribute("data-select")) === docsIdx)!;
+    m.doc.dispatchDoc("click", { target: docsCheck });
+    bulkMove.focus();
+    bulkMove.click();
+    expect(m.doc.getElementById("move-dialog").open).toBe(true);
+    const moveSelect = m.doc.getElementById("move-folder");
+    expect(moveSelect.value).toBe("");
+    expect(m.doc.getElementById("move-form").dispatch("submit")).toBe(true);
+    expect(m.doc.getElementById("move-error").textContent).toBe(
+      "Already in this folder.",
+    );
+    moveSelect.value = "__custom__";
+    moveSelect.dispatch("change");
+    m.doc.getElementById("move-custom-input").value = "Documents/sub";
+    expect(m.doc.getElementById("move-form").dispatch("submit")).toBe(true);
+    expect(m.doc.getElementById("move-error").textContent).toBe(
+      "Can't move a folder into itself or a conflicting path.",
+    );
+    m.doc.getElementById("move-dialog").close();
+
+    // 3a. Clicking #bulk-clear or pressing Escape inside #bulk-bar moves focus to #select-all (never drops to body).
+    bulkClear.focus();
+    bulkClear.click();
+    expect(m.doc.getElementById("bulk-bar").hidden).toBe(true);
+    expect(m.doc.activeElement).toBe(selectAll);
+
+    m.doc.dispatchDoc("click", { target: docsCheck });
+    bulkMove.focus();
+    m.doc.dispatchDoc("keydown", { key: "Escape", isComposing: false });
+    expect(m.doc.getElementById("bulk-bar").hidden).toBe(true);
+    expect(m.doc.activeElement).toBe(selectAll);
+
+    // 3b. Dragging a folder onto another folder row passes the focusable .row-link as dialog opener, not the non-focusable <li>.
+    const rows = m.doc.getElementById("rows").children;
+    const photosIdx = m.ctrl.items().findIndex((i) => i.name === "Photos");
+    const docsRow = rows[docsIdx]!;
+    const docsRowLink = docsRow.querySelector(".row-link")!;
+    main.dispatch("dragstart", {
+      target: rows[photosIdx]!,
+      dataTransfer: { effectAllowed: "", setData() {}, types: ["text/plain"] },
+    });
+    main.dispatch("drop", {
+      target: docsRow,
+      dataTransfer: { types: ["text/plain"], files: [] },
+    });
+    expect(m.doc.getElementById("move-dialog").open).toBe(true);
+    m.doc.activeElement = m.doc.body;
+    m.doc.getElementById("move-dialog").close();
+    expect(m.doc.activeElement).toBe(docsRowLink);
+
+    // 3c. Closing #folder-result-dialog after bulk failure restores focus to #main when previous opener was hidden inside #bulk-bar or body.
+    await m.bucket.put("drive/Photos/alpha.txt", "existing", {
+      httpMetadata: { contentType: "text/plain" },
+    });
+    const alphaIdx = m.ctrl.items().findIndex((i) => i.name === "alpha.txt");
+    const alphaCheck = m.doc
+      .getElementById("rows")
+      .querySelectorAll(".select-check[data-select]")
+      .find((c) => Number(c.getAttribute("data-select")) === alphaIdx)!;
+    m.doc.dispatchDoc("click", { target: alphaCheck });
+    bulkMove.focus();
+    bulkMove.click();
+    moveSelect.value = "Photos/";
+    moveSelect.dispatch("change");
+    expect(m.doc.getElementById("move-form").dispatch("submit")).toBe(false);
+    m.doc.getElementById("move-dialog").close();
+    await until(() => m.doc.getElementById("folder-result-dialog").open);
+    await until(() => !m.ctrl.state.loading);
+    m.doc.activeElement = m.doc.body;
+    m.doc.getElementById("folder-result-dialog").close();
+    expect(m.doc.activeElement).toBe(main);
+
+    // 4. Prototype property extensions like foo.constructor are never treated as raster images for Grid thumbnails.
+    await m.bucket.put("drive/foo.constructor", "not an image", {
+      httpMetadata: { contentType: "application/octet-stream" },
+    });
+    m.ctrl.load();
+    await until(() => !m.ctrl.state.loading);
+    const gridBtn = m.doc.viewButtons.find(
+      (b) => b.getAttribute("data-view") === "grid",
+    )!;
+    gridBtn.click();
+    const obs = m.observers.at(-1)!;
+    expect(obs.observed).toHaveLength(1); // Only pic.png, NOT foo.constructor or logo.svg!
+    obs.cb(obs.observed.map((target) => ({ target, isIntersecting: true })));
+    await until(() => m.createdUrls.length === 1);
+    expect(m.requests.some((r) => r.path.includes("foo.constructor"))).toBe(
+      false,
+    );
+
+    // 5. popstate closes open dialogs (e.g. #name-dialog, #shortcuts-dialog) so they cannot submit into the newly navigated path.
+    const listBtn = m.doc.viewButtons.find(
+      (b) => b.getAttribute("data-view") === "list",
+    )!;
+    listBtn.click();
+    m.ctrl.openItem(m.ctrl.items().find((i) => i.name === "Documents")!);
+    expect(m.ctrl.state.path).toBe("Documents/");
+    main.focus();
+    m.doc.dispatchDoc("keydown", { key: "n" });
+    expect(m.doc.getElementById("name-dialog").open).toBe(true);
+    m.navigateHistory(-1);
+    expect(m.ctrl.state.path).toBe("");
+    expect(m.doc.getElementById("name-dialog").open).toBe(false);
   });
 });

@@ -1441,7 +1441,7 @@ export function storageConsoleHtml(): string {
     return Boolean(
       item &&
       item.type === "file" &&
-      PREVIEW_IMAGE_EXT[extOf(item.name)] &&
+      Object.prototype.hasOwnProperty.call(PREVIEW_IMAGE_EXT, extOf(item.name)) &&
       typeof item.size === "number" &&
       item.size > 0 &&
       item.size <= THUMB_MAX_BYTES
@@ -1558,11 +1558,25 @@ export function storageConsoleHtml(): string {
       thumbObserver.observe(entry.el);
     });
   }
+  function closeDialogsForNavigation() {
+    [nameDialog, moveDialog, deleteDialog, cleanupDialog, folderResultDialog, shortcutsDialog].forEach(function (dlg) {
+      if (dlg && dlg.open && typeof dlg.close === "function") {
+        if (dlg === nameDialog) nameOpener = null;
+        else if (dlg === moveDialog) { moveOpener = null; bulkActionPlan = null; }
+        else if (dlg === deleteDialog) { deleteOpener = null; bulkActionPlan = null; }
+        else if (dlg === cleanupDialog) { cleanupOpener = null; cleanupTarget = null; cleanupVerified = null; }
+        else if (dlg === folderResultDialog) folderResultOpener = null;
+        else if (dlg === shortcutsDialog) shortcutsOpener = null;
+        dlg.close();
+      }
+    });
+  }
   window.addEventListener("pagehide", function () { clearThumbs(null); });
   window.addEventListener("popstate", function () {
     clearTimeout(searchTimer);
     closeMenus(false);
     closePreview(false);
+    closeDialogsForNavigation();
     clearSelection(false);
     applyUrlState();
     render();
@@ -1583,9 +1597,25 @@ export function storageConsoleHtml(): string {
     });
   }
   function clearSelection(syncUi) {
+    var focusInBulk = Boolean(
+      syncUi &&
+      bulkBarEl &&
+      typeof bulkBarEl.contains === "function" &&
+      document.activeElement &&
+      bulkBarEl.contains(document.activeElement)
+    );
     selectedPaths = Object.create(null);
     lastSelectedIndex = -1;
-    if (syncUi) syncSelectionUi();
+    if (syncUi) {
+      syncSelectionUi();
+      if (focusInBulk) {
+        if (isUsableFocusTarget(selectAllBtn)) {
+          selectAllBtn.focus();
+          if (document.activeElement === selectAllBtn) return;
+        }
+        if (mainEl && typeof mainEl.focus === "function") mainEl.focus();
+      }
+    }
   }
   function syncSelectionUi() {
     var selected = selectedVisibleItems();
@@ -1650,14 +1680,14 @@ export function storageConsoleHtml(): string {
       if (v < 1024 || i === units.length - 1) return (v >= 100 ? Math.round(v) : v.toFixed(1)) + " " + units[i];
     }
   }
-  var EXT_KIND = {
+  var EXT_KIND = Object.assign(Object.create(null), {
     png: "image", jpg: "image", jpeg: "image", gif: "image", webp: "image", svg: "image", avif: "image", ico: "image",
     mp4: "video", webm: "video", mov: "video", mkv: "video",
     mp3: "audio", wav: "audio", ogg: "audio", flac: "audio", m4a: "audio",
     txt: "text", md: "text", json: "text", js: "text", ts: "text", css: "text", html: "text",
     csv: "text", log: "text", yaml: "text", yml: "text", toml: "text", xml: "text", tf: "text",
     pdf: "pdf", zip: "archive", gz: "archive", tar: "archive", "7z": "archive", rar: "archive",
-  };
+  });
   var KIND_ACCENT = {
     folder: "#7c3aed", image: "#dc2626", video: "#db2777", audio: "#ea580c",
     text: "#2563eb", pdf: "#b91c1c", archive: "#a16207", file: "#5f6368",
@@ -1672,9 +1702,9 @@ export function storageConsoleHtml(): string {
     archive: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 3v18"/><path d="M12 7h2M10 5h2M12 11h2M10 9h2"/>',
     file: ${JSON.stringify(ICON_FILE)},
   };
-  var PREVIEW_IMAGE_EXT = {
+  var PREVIEW_IMAGE_EXT = Object.assign(Object.create(null), {
     png: 1, jpg: 1, jpeg: 1, gif: 1, webp: 1, avif: 1, ico: 1,
-  };
+  });
   function extOf(name) {
     var dot = name.lastIndexOf(".");
     return dot < 0 ? "" : name.slice(dot + 1).toLowerCase();
@@ -3017,6 +3047,7 @@ export function storageConsoleHtml(): string {
   }
   if (shortcutsDialog) {
     shortcutsDialog.addEventListener("close", function () {
+      if (shortcutsDialog.open) return;
       var opener = shortcutsOpener;
       shortcutsOpener = null;
       restoreDialogFocus(opener);
@@ -3038,7 +3069,7 @@ export function storageConsoleHtml(): string {
       }
     }
     if (hasOpenOverlay() || isTextInput(document.activeElement)) return;
-    if (e.key === "/" && !e.shiftKey && document.activeElement !== searchInput) {
+    if (e.key === "/" && document.activeElement !== searchInput) {
       e.preventDefault();
       searchInput.focus();
       return;
@@ -3077,13 +3108,14 @@ export function storageConsoleHtml(): string {
       var onItem = idx >= 0;
       if (!onItem && active && active.classList && (active.classList.contains("kebab") || active.classList.contains("select-check"))) {
         var attr = active.classList.contains("kebab") ? "data-item" : "data-select";
-        var itemIdx = Number(active.getAttribute(attr));
+        var rawIdx = active.getAttribute(attr);
+        var itemIdx = rawIdx !== null && rawIdx !== "" ? Number(rawIdx) : NaN;
         if (!isNaN(itemIdx) && itemIdx >= 0 && itemIdx < links.length) {
           idx = itemIdx;
           onItem = true;
         }
       }
-      var canEnter = !active || active === mainEl || active === document.body;
+      var canEnter = !active || active === mainEl || active === document.body || (active === selectAllBtn && e.key === "ArrowDown");
       if ((e.key === "Home" || e.key === "End") && !onItem) return;
       if (!onItem && !canEnter) return;
       e.preventDefault();
@@ -3374,6 +3406,9 @@ export function storageConsoleHtml(): string {
         }).catch(mutationFailed);
         return;
       }
+      var dropFocusTarget = target && typeof target.querySelector === "function"
+        ? (target.querySelector(".row-link") || (target.tagName === "BUTTON" ? target : mainEl))
+        : (target && target.tagName === "BUTTON" ? target : mainEl);
       if (items.length === 1 && items[0].type === "folder") {
         var folder = items[0];
         var entries = folderSnapshot(folder);
@@ -3381,12 +3416,12 @@ export function storageConsoleHtml(): string {
         bulkActionPlan = null;
         actionEntries = entries;
         actionTarget = folder;
-        openMoveDialog(folder, target, destFolder);
+        openMoveDialog(folder, dropFocusTarget, destFolder);
         return;
       }
       var plan = buildBulkPlan(items);
       if (!plan) return;
-      openBulkMoveDialog(plan, destFolder, target);
+      openBulkMoveDialog(plan, destFolder, dropFocusTarget);
       return;
     }
     e.preventDefault();
@@ -3411,15 +3446,25 @@ export function storageConsoleHtml(): string {
   var moveOpener = null;
   var deleteOpener = null;
 
+  function isUsableFocusTarget(el) {
+    if (!el || el === document.body || typeof el.focus !== "function") return false;
+    if (typeof el.isConnected === "boolean" && !el.isConnected) return false;
+    if (el.disabled || el.hidden) return false;
+    if (typeof el.closest === "function" && el.closest("[hidden]")) return false;
+    return true;
+  }
   function restoreDialogFocus(opener) {
-    if (opener && typeof opener.focus === "function" && (typeof opener.isConnected !== "boolean" || opener.isConnected)) {
+    if (isUsableFocusTarget(opener)) {
       opener.focus();
-    } else if (mainEl && typeof mainEl.focus === "function") {
+      if (document.activeElement === opener) return;
+    }
+    if (mainEl && typeof mainEl.focus === "function") {
       mainEl.focus();
     }
   }
   if (nameDialog) {
     nameDialog.addEventListener("close", function () {
+      if (nameDialog.open) return;
       var opener = nameOpener;
       nameOpener = null;
       restoreDialogFocus(opener);
@@ -3488,6 +3533,7 @@ export function storageConsoleHtml(): string {
   var deleteConfirm = document.getElementById("delete-confirm");
   if (deleteDialog) {
     deleteDialog.addEventListener("close", function () {
+      if (deleteDialog.open) return;
       bulkActionPlan = null;
       var opener = deleteOpener;
       deleteOpener = null;
@@ -3497,6 +3543,7 @@ export function storageConsoleHtml(): string {
   var cleanupDialog = document.getElementById("cleanup-dialog");
   if (cleanupDialog) {
     cleanupDialog.addEventListener("close", function () {
+      if (cleanupDialog.open) return;
       cleanupTarget = null;
       cleanupVerified = null;
       var opener = cleanupOpener;
@@ -3507,6 +3554,7 @@ export function storageConsoleHtml(): string {
   var folderResultDialog = document.getElementById("folder-result-dialog");
   if (folderResultDialog) {
     folderResultDialog.addEventListener("close", function () {
+      if (folderResultDialog.open) return;
       var opener = folderResultOpener;
       folderResultOpener = null;
       restoreDialogFocus(opener);
@@ -3515,6 +3563,7 @@ export function storageConsoleHtml(): string {
   var moveDialog = document.getElementById("move-dialog");
   if (moveDialog) {
     moveDialog.addEventListener("close", function () {
+      if (moveDialog.open) return;
       bulkActionPlan = null;
       var opener = moveOpener;
       moveOpener = null;
@@ -3745,6 +3794,7 @@ export function storageConsoleHtml(): string {
         for (var i = 0; i < plan.length; i++) {
           var step = plan[i];
           var stepItem = step.item;
+          if (parentFolderOf(stepItem) === destFolder) continue;
           if (stepItem.type === "folder") {
             var bulkDestPath = destFolder + stepItem.name + "/";
             if (bulkDestPath.indexOf(stepItem.path) === 0 || stepItem.path.indexOf(bulkDestPath) === 0) {
@@ -3753,7 +3803,6 @@ export function storageConsoleHtml(): string {
               return;
             }
           }
-          if (parentFolderOf(stepItem) === destFolder) continue;
           var keyName = stepItem.name;
           if (destNames[keyName]) {
             e.preventDefault();
