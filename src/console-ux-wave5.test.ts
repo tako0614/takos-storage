@@ -338,6 +338,7 @@ class FakeEl {
 
   focus() {
     this.doc.activeElement = this;
+    this.dispatch("focus");
   }
 
   select() {
@@ -440,6 +441,10 @@ class FakeDoc {
     preview.appendChild(this.getElementById("preview-download", "BUTTON"));
     preview.appendChild(this.getElementById("preview-close", "BUTTON"));
     preview.appendChild(this.getElementById("preview-body"));
+    const focusEnd = this.getElementById("preview-focus-end", "SPAN");
+    focusEnd.tabIndex = 0;
+    focusEnd.hidden = true;
+    preview.appendChild(focusEnd);
 
     const main = this.getElementById("main", "MAIN");
     const bulkBar = this.getElementById("bulk-bar");
@@ -695,6 +700,9 @@ describe("Takos Storage Wave 5 UI/UX improvements", () => {
       ".card .row-link:focus-visible { outline-offset: -2px;",
     );
     expect(html).toContain(
+      ".card .kebab:focus-visible, .card .card-check:focus-visible { outline-offset: -2px; }",
+    );
+    expect(html).toContain(
       ".view-toggle .seg:focus-visible { outline-offset: -2px; }",
     );
     expect(html).toContain(
@@ -705,7 +713,11 @@ describe("Takos Storage Wave 5 UI/UX improvements", () => {
       '<div class="tray" id="tray" role="region" aria-labelledby="tray-title">',
     );
     expect(html).toContain(
-      '<h1 id="splash-text" role="status" aria-live="polite"',
+      '<div id="splash-status" role="status" aria-live="polite">',
+    );
+    expect(html).toContain('<h1 id="splash-text" data-i18n="loading">');
+    expect(html).toContain(
+      '<span class="sr-only" id="preview-focus-end" tabindex="0" hidden></span>',
     );
     expect(html).toContain(
       'id="folder-result-paths" class="result-paths" tabindex="0"',
@@ -714,6 +726,9 @@ describe("Takos Storage Wave 5 UI/UX improvements", () => {
     expect(html).toContain(".preview-body video");
     expect(html).toContain(
       "main { margin: 0 10px 10px; padding-bottom: 84px; }",
+    );
+    expect(html).toContain(
+      ".row .select-check, .list-head:not(.as-grid) .select-check { margin: 0 -6px; }",
     );
   });
 
@@ -889,13 +904,29 @@ describe("Takos Storage Wave 5 UI/UX improvements", () => {
     expect(arrowPrevented).toBe(false);
     expect(m.doc.getElementById("preview-name").textContent).toBe("track.mp3");
 
-    // Tab focus trap includes <audio controls>.
+    // Tab focus trap includes <audio controls>, allows forward Tab through native
+    // media sub-controls without early wrap, and wraps to first via #preview-focus-end.
+    const focusEnd = m.doc.getElementById("preview-focus-end");
+    expect(focusEnd.hidden).toBe(false);
     m.doc.getElementById("preview-close").focus();
-    const tabPrevented = m.doc.dispatch("keydown", { key: "Tab" });
-    expect(tabPrevented).toBe(false);
+    const tabFromClose = m.doc.dispatch("keydown", { key: "Tab" });
+    expect(tabFromClose).toBe(false);
+    audioEl.focus();
+    const tabInsideAudio = m.doc.dispatch("keydown", { key: "Tab" });
+    expect(tabInsideAudio).toBe(false);
+    expect(m.doc.activeElement).toBe(audioEl);
+    // Exiting <audio> lands on #preview-focus-end, which wraps focus to first enabled control.
+    focusEnd.focus();
+    const expectedFirst = m.doc.getElementById("preview-prev").disabled
+      ? m.doc.getElementById("preview-next").disabled
+        ? m.doc.getElementById("preview-download")
+        : m.doc.getElementById("preview-next")
+      : m.doc.getElementById("preview-prev");
+    expect(m.doc.activeElement).toBe(expectedFirst);
 
-    // Closing preview pauses, detaches src, reloads media, and revokes the blob URL.
+    // Closing preview pauses, detaches src, reloads media, hides sentinel, and revokes the blob URL.
     m.ctrl.closePreview(true);
+    expect(focusEnd.hidden).toBe(true);
     expect(audioEl.pauseCalls).toBe(1);
     expect(audioEl.loadCalls).toBe(1);
     expect(audioEl.src).toBe("");
@@ -912,21 +943,30 @@ describe("Takos Storage Wave 5 UI/UX improvements", () => {
       .querySelector("video")!;
     expect(videoEl.controls).toBe(true);
     expect(videoEl.playsInline).toBe(true);
+    expect(focusEnd.hidden).toBe(false);
     expect(m.createdUrls.at(-1)).toEqual({
       url: "blob:w5-2",
       type: "video/mp4",
     });
 
-    // MEDIA_ERR_SRC_NOT_SUPPORTED (code 4) falls back cleanly to unsupported message + Download.
+    // Forward Tab on focused <video> is not intercepted so native controls stay reachable.
+    videoEl.focus();
+    expect(m.doc.dispatch("keydown", { key: "Tab" })).toBe(false);
+    expect(m.doc.activeElement).toBe(videoEl);
+
+    // MEDIA_ERR_SRC_NOT_SUPPORTED (code 4) immediately revokes previewUrl, hides sentinel,
+    // and falls back cleanly to unsupported message + Download.
     videoEl.error = { code: 4 };
     videoEl.dispatch("error");
+    expect(m.revokedUrls).toContain("blob:w5-2");
+    expect(focusEnd.hidden).toBe(true);
     expect(
       m.doc
         .getElementById("preview-body")
         .children[0]?.children.map((c) => c.textContent),
     ).toEqual(["No preview available.", "Download"]);
 
-    // Oversized media skips fetch and shows previewTooBig.
+    // Oversized media skips fetch (cached item.size) and shows previewTooBig.
     const urlCountBefore = m.createdUrls.length;
     m.ctrl.openPreview({
       type: "file",
@@ -941,6 +981,27 @@ describe("Takos Storage Wave 5 UI/UX improvements", () => {
         .getElementById("preview-body")
         .children[0]?.children.map((c) => c.textContent),
     ).toEqual(["Too large to preview.", "Download"]);
+
+    // Concurrently grown media (small cached item.size, oversized fetched blob) also shows previewTooBig without allocating a blob URL.
+    await m.bucket.put(
+      "drive/grew.mp4",
+      new Uint8Array(25 * 1024 * 1024 + 16),
+      { httpMetadata: { contentType: "video/mp4" } },
+    );
+    const urlsBeforeGrown = m.createdUrls.length;
+    m.ctrl.openPreview({
+      type: "file",
+      name: "grew.mp4",
+      path: "grew.mp4",
+      size: 1024,
+      etag: '"stale"',
+    });
+    await until(
+      () =>
+        m.doc.getElementById("preview-body").children[0]?.children[0]
+          ?.textContent === "Too large to preview.",
+    );
+    expect(m.createdUrls.length).toBe(urlsBeforeGrown);
     m.ctrl.closePreview(false);
   });
 

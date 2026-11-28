@@ -766,6 +766,7 @@ export function storageConsoleHtml(): string {
   .row-link { position: absolute; inset: 0; border: none; background: transparent; cursor: pointer; border-radius: 4px; z-index: 1; }
   .row .row-link:focus-visible { outline-offset: -2px; }
   .card .row-link:focus-visible { outline-offset: -2px; border-radius: 11px; }
+  .card .kebab:focus-visible, .card .card-check:focus-visible { outline-offset: -2px; }
   .row-name { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: 14px; }
   .row-name .name-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .row-name .name-sub { display: block; font-size: 12px; color: var(--text-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1018,9 +1019,10 @@ export function storageConsoleHtml(): string {
     .search { order: 3; flex: 1 0 100%; max-width: none; }
     .crumbs, .crumb, h1.crumb-heading { font-size: 17px; }
     .crumb { padding: 4px 6px; }
-    .list-head:not(.as-grid), .row { grid-template-columns: minmax(0,1fr) 94px 44px; gap: 4px; padding-left: 8px; padding-right: 4px; }
-    .list-head:not(.as-grid) .sortable { font-size: 12px; }
+    .list-head:not(.as-grid), .row { grid-template-columns: minmax(0,1fr) 100px 44px; gap: 4px; padding-left: 8px; padding-right: 4px; }
+    .list-head:not(.as-grid) .sortable { font-size: 12px; padding: 8px 2px; }
     .list-head:not(.as-grid) .sortable.col-size, .row-size { display: none; }
+    .row .select-check, .list-head:not(.as-grid) .select-check { margin: 0 -6px; }
     .list-head.as-grid { padding: 4px 8px 8px; gap: 4px; }
     .list-head.as-grid .sortable { padding: 8px 10px; font-size: 12.5px; }
     .row-name { gap: 6px; }
@@ -1045,7 +1047,9 @@ export function storageConsoleHtml(): string {
   <div class="splash" id="splash">
     <div class="splash-card">
       <span class="mark">${svg(ICON_HDD, 17)}</span>
-      <h1 id="splash-text" role="status" aria-live="polite" data-i18n="loading">${CATALOGS.en.loading}</h1>
+      <div id="splash-status" role="status" aria-live="polite">
+        <h1 id="splash-text" data-i18n="loading">${CATALOGS.en.loading}</h1>
+      </div>
       <p id="splash-body" class="splash-body" hidden></p>
       <div class="splash-actions" id="splash-actions" hidden>
         <button type="button" class="btn primary" id="splash-retry" hidden data-i18n="retry">${CATALOGS.en.retry}</button>
@@ -1259,6 +1263,7 @@ export function storageConsoleHtml(): string {
       <button type="button" class="icon-btn" id="preview-close" data-i18n-label="close" aria-label="${CATALOGS.en.close}">${svg(ICON_X, 18)}</button>
     </div>
     <div class="preview-body" id="preview-body"></div>
+    <span class="sr-only" id="preview-focus-end" tabindex="0" hidden></span>
   </div>
 
   <div class="tray" id="tray" role="region" aria-labelledby="tray-title">
@@ -2000,11 +2005,14 @@ export function storageConsoleHtml(): string {
   // ---- Session boot ----
   function setSplash(titleKey, bodyKey, opts) {
     opts = opts || {};
+    var statusEl = document.getElementById("splash-status");
+    if (statusEl) {
+      statusEl.setAttribute("role", opts.alert ? "alert" : "status");
+      statusEl.setAttribute("aria-live", opts.alert ? "assertive" : "polite");
+    }
     var textEl = document.getElementById("splash-text");
     if (textEl) {
       textEl.textContent = t(titleKey);
-      textEl.setAttribute("role", opts.alert ? "alert" : "status");
-      textEl.setAttribute("aria-live", opts.alert ? "assertive" : "polite");
     }
     var bodyEl = document.getElementById("splash-body");
     if (bodyEl) {
@@ -2677,12 +2685,30 @@ export function storageConsoleHtml(): string {
   var previewPrevBtn = document.getElementById("preview-prev");
   var previewNextBtn = document.getElementById("preview-next");
   var previewCloseBtn = document.getElementById("preview-close");
+  var previewFocusEnd = document.getElementById("preview-focus-end");
   var previewTarget = null;
   var previewUrl = null;
   var previewOpener = null;
   var previewRequest = 0;
   var PREVIEW_TEXT_MAX = 1024 * 1024;
   var PREVIEW_MEDIA_MAX = 25 * 1024 * 1024;
+  function previewFocusable() {
+    if (!previewEl || typeof previewEl.querySelectorAll !== "function") return [];
+    return Array.prototype.filter.call(
+      previewEl.querySelectorAll("button:not([disabled]):not([hidden]), a[href], audio[controls], video[controls], [tabindex]:not([tabindex='-1'])"),
+      function (el) {
+        return el !== previewFocusEnd && !el.hidden && !el.disabled && (!el.closest || !el.closest("[hidden]"));
+      }
+    );
+  }
+  if (previewFocusEnd) {
+    previewFocusEnd.addEventListener("focus", function () {
+      if (!previewEl.classList.contains("open")) return;
+      var list = previewFocusable();
+      if (list.length && typeof list[0].focus === "function") list[0].focus();
+      else if (typeof previewEl.focus === "function") previewEl.focus();
+    });
+  }
   function previewFiles() {
     return currentVisible.filter(function (entry) { return entry.type === "file"; });
   }
@@ -2722,6 +2748,7 @@ export function storageConsoleHtml(): string {
     var wasOpen = previewEl.classList.contains("open");
     previewRequest++;
     previewEl.classList.remove("open");
+    if (previewFocusEnd) previewFocusEnd.hidden = true;
     if (typeof previewBody.querySelectorAll === "function") {
       previewBody.querySelectorAll("audio, video").forEach(function (media) {
         if (typeof media.pause === "function") media.pause();
@@ -2803,6 +2830,10 @@ export function storageConsoleHtml(): string {
         return r.blob();
       }).then(function (blob) {
         if (!isCurrent()) return;
+        if (blob && blob.size > PREVIEW_MEDIA_MAX) {
+          fallbackPreview("previewTooBig");
+          return;
+        }
         var typedBlob = typeof Blob === "function" ? new Blob([blob], { type: mediaMime }) : blob;
         previewUrl = URL.createObjectURL(typedBlob);
         previewBody.innerHTML = "";
@@ -2818,6 +2849,7 @@ export function storageConsoleHtml(): string {
         media.src = previewUrl;
         media.addEventListener("error", function () {
           if (!isCurrent()) return;
+          if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = null; }
           if (media.error && media.error.code === 4) fallbackPreview("previewNone");
           else showReadFailure();
         });
@@ -2835,6 +2867,7 @@ export function storageConsoleHtml(): string {
         } else {
           previewBody.appendChild(media);
         }
+        if (previewFocusEnd) previewFocusEnd.hidden = false;
       }).catch(showReadFailure);
       return;
     }
@@ -2858,6 +2891,7 @@ export function storageConsoleHtml(): string {
     fallbackPreview(kind === "text" ? "previewTooBig" : "previewNone");
   }
   function fallbackPreview(msgKey, retry) {
+    if (previewFocusEnd) previewFocusEnd.hidden = true;
     previewBody.innerHTML = "";
     var box = document.createElement("div");
     box.className = "preview-fallback";
@@ -3001,17 +3035,17 @@ export function storageConsoleHtml(): string {
         return;
       }
       if (previewEl.classList.contains("open") && typeof previewEl.querySelectorAll === "function") {
-        var focusable = Array.prototype.filter.call(
-          previewEl.querySelectorAll("button:not([disabled]):not([hidden]), a[href], audio[controls], video[controls], [tabindex]:not([tabindex='-1'])"),
-          function (el) { return !el.hidden && !el.disabled && (!el.closest || !el.closest("[hidden]")); }
-        );
+        var focusable = previewFocusable();
         if (!focusable.length) { e.preventDefault(); previewEl.focus(); return; }
         var first = focusable[0], last = focusable[focusable.length - 1];
-        var inside = typeof previewEl.contains === "function" && previewEl.contains(document.activeElement);
+        var active = document.activeElement;
+        var inside = typeof previewEl.contains === "function" && previewEl.contains(active);
         if (e.shiftKey) {
-          if (!inside || document.activeElement === first || document.activeElement === previewEl) { e.preventDefault(); last.focus(); }
-        } else if (!inside || document.activeElement === last) {
-          e.preventDefault(); first.focus();
+          if (!inside || active === first || active === previewEl) { e.preventDefault(); last.focus(); }
+        } else {
+          var inNativeMedia = Boolean(active && (active.tagName === "AUDIO" || active.tagName === "VIDEO"));
+          if (inNativeMedia) return;
+          if (!inside || active === last) { e.preventDefault(); first.focus(); }
         }
       }
     }
